@@ -80,6 +80,10 @@ public interface LoanApiConstants {
     String daysInYearTypeParameterName = "daysInYearType";
     String daysInMonthTypeParameterName = "daysInMonthType";
 
+    String MULTIDISBURSE_DETAILS_PARAMNAME = "multiDisburseDetails";
+    String EMI_AMOUNT_VARIATIONS_PARAMNAME = "emiAmountVariations";
+    String COLLECTION_PARAMNAME = "collection";
+
     // Interest recalculation related
     String isInterestRecalculationEnabledParameterName = "isInterestRecalculationEnabled";
     String interestRecalculationCompoundingMethodParameterName = "interestRecalculationCompoundingMethod";
@@ -140,4 +144,5 @@ public interface LoanApiConstants {
 
     String scorecard = "scorecard";
 
+    String LOAN_ASSOCIATIONS_ALL = "all";
 }

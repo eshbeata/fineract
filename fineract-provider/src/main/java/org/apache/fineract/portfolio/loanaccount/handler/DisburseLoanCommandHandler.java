@@ -18,30 +18,36 @@
  */
 package org.apache.fineract.portfolio.loanaccount.handler;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.annotation.CommandType;
 import org.apache.fineract.commands.handler.NewCommandSourceHandler;
+import org.apache.fineract.infrastructure.DataIntegrityErrorHandler;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.portfolio.loanaccount.service.LoanWritePlatformService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 @CommandType(entity = "LOAN", action = "DISBURSE")
 public class DisburseLoanCommandHandler implements NewCommandSourceHandler {
 
     private final LoanWritePlatformService writePlatformService;
-
-    @Autowired
-    public DisburseLoanCommandHandler(final LoanWritePlatformService writePlatformService) {
-        this.writePlatformService = writePlatformService;
-    }
+    private final DataIntegrityErrorHandler dataIntegrityErrorHandler;
 
     @Transactional
     @Override
     public CommandProcessingResult processCommand(final JsonCommand command) {
 
-        return this.writePlatformService.disburseLoan(command.entityId(), command, false);
+        try {
+            return this.writePlatformService.disburseLoan(command.entityId(), command, false);
+        } catch (final JpaSystemException | DataIntegrityViolationException dve) {
+            dataIntegrityErrorHandler.handleDataIntegrityIssues(command, dve.getMostSpecificCause(), dve, "loan.disbursement",
+                    "Disbursement");
+            return CommandProcessingResult.empty();
+        }
     }
 }

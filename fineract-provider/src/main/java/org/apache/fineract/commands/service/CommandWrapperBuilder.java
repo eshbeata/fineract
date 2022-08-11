@@ -797,6 +797,42 @@ public class CommandWrapperBuilder {
         return this;
     }
 
+    public CommandWrapperBuilder loanMerchantIssuedRefundTransaction(final Long loanId) {
+        this.actionName = "MERCHANTISSUEDREFUND";
+        this.entityName = "LOAN";
+        this.entityId = null;
+        this.loanId = loanId;
+        this.href = "/loans/" + loanId + "/transactions/template?command=merchantissuedrefund";
+        return this;
+    }
+
+    public CommandWrapperBuilder loanPayoutRefundTransaction(final Long loanId) {
+        this.actionName = "PAYOUTREFUND";
+        this.entityName = "LOAN";
+        this.entityId = null;
+        this.loanId = loanId;
+        this.href = "/loans/" + loanId + "/transactions/template?command=payoutrefund";
+        return this;
+    }
+
+    public CommandWrapperBuilder loanGoodwillCreditTransaction(final Long loanId) {
+        this.actionName = "GOODWILLCREDIT";
+        this.entityName = "LOAN";
+        this.entityId = null;
+        this.loanId = loanId;
+        this.href = "/loans/" + loanId + "/transactions/template?command=goodwillcredit";
+        return this;
+    }
+
+    public CommandWrapperBuilder refundLoanCharge(final Long loanId) {
+        this.actionName = "CHARGEREFUND";
+        this.entityName = "LOAN";
+        this.entityId = null;
+        this.loanId = loanId;
+        this.href = "/loans/" + loanId + "/transactions/template?command=chargerefund";
+        return this;
+    }
+
     public CommandWrapperBuilder loanRecoveryPaymentTransaction(final Long loanId) {
         this.actionName = "RECOVERYPAYMENT";
         this.entityName = "LOAN";
@@ -875,6 +911,15 @@ public class CommandWrapperBuilder {
         this.entityId = null;
         this.loanId = loanId;
         this.href = "/loans/" + loanId + "/transactions?command=foreclosure";
+        return this;
+    }
+
+    public CommandWrapperBuilder creditBalanceRefund(final Long loanId) {
+        this.actionName = "CREDITBALANCEREFUND";
+        this.entityName = "LOAN";
+        this.entityId = null;
+        this.loanId = loanId;
+        this.href = "/loans/" + loanId + "/transactions?command=creditBalanceRefund";
         return this;
     }
 
@@ -3442,6 +3487,7 @@ public class CommandWrapperBuilder {
         return this;
     }
 
+
     public CommandWrapperBuilder createCreditScorecardFeature() {
         this.actionName = "CREATE";
         this.entityName = "CREDIT_SCORECARD_FEATURE";
@@ -3463,6 +3509,59 @@ public class CommandWrapperBuilder {
         this.entityName = "CREDIT_SCORECARD_FEATURE";
         this.entityId = featureId;
         this.href = "/scorecard/features/" + featureId;
+        return this;
+    }
+
+    public CommandWrapperBuilder updateBusinessDate() {
+        this.actionName = "UPDATE";
+        this.entityName = "BUSINESS_DATE";
+        this.href = "/businessdate";
+        return this;
+    }
+
+    public CommandWrapperBuilder createDelinquencyRange() {
+        this.actionName = "CREATE";
+        this.entityName = "DELINQUENCY_RANGE";
+        this.href = "/delinquency/range";
+        return this;
+    }
+
+    public CommandWrapperBuilder updateDelinquencyRange(final Long delinquencyRangeId) {
+        this.actionName = "UPDATE";
+        this.entityName = "DELINQUENCY_RANGE";
+        this.entityId = delinquencyRangeId;
+        this.href = "/delinquency/range";
+        return this;
+    }
+
+    public CommandWrapperBuilder deleteDelinquencyRange(final Long delinquencyRangeId) {
+        this.actionName = "DELETE";
+        this.entityName = "DELINQUENCY_RANGE";
+        this.entityId = delinquencyRangeId;
+        this.href = "/delinquency/range";
+        return this;
+    }
+
+    public CommandWrapperBuilder createDelinquencyBucket() {
+        this.actionName = "CREATE";
+        this.entityName = "DELINQUENCY_BUCKET";
+        this.href = "/delinquency/bucket";
+        return this;
+    }
+
+    public CommandWrapperBuilder updateDelinquencyBucket(final Long delinquencyBucketId) {
+        this.actionName = "UPDATE";
+        this.entityName = "DELINQUENCY_BUCKET";
+        this.entityId = delinquencyBucketId;
+        this.href = "/delinquency/bucket";
+        return this;
+    }
+
+    public CommandWrapperBuilder deleteDelinquencyBucket(final Long delinquencyBucketId) {
+        this.actionName = "DELETE";
+        this.entityName = "DELINQUENCY_BUCKET";
+        this.entityId = delinquencyBucketId;
+        this.href = "/delinquency/bucket";
         return this;
     }
 

@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.apache.fineract.accounting.glaccount.data.GLAccountData;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
@@ -41,28 +42,18 @@ import org.apache.fineract.portfolio.loanaccount.data.LoanChargePaidByData;
 import org.apache.fineract.portfolio.loanaccount.data.LoanInstallmentChargeData;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
     private final PlatformSecurityContext context;
     private final ChargeDropdownReadPlatformService chargeDropdownReadPlatformService;
     private final DropdownReadPlatformService dropdownReadPlatformService;
-
-    @Autowired
-    public LoanChargeReadPlatformServiceImpl(final PlatformSecurityContext context,
-            final ChargeDropdownReadPlatformService chargeDropdownReadPlatformService, final JdbcTemplate jdbcTemplate,
-            final DropdownReadPlatformService dropdownReadPlatformService) {
-        this.context = context;
-        this.chargeDropdownReadPlatformService = chargeDropdownReadPlatformService;
-        this.jdbcTemplate = jdbcTemplate;
-        this.dropdownReadPlatformService = dropdownReadPlatformService;
-    }
 
     private static final class LoanChargeMapper implements RowMapper<LoanChargeData> {
 
@@ -85,7 +76,6 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
         @Override
         public LoanChargeData mapRow(final ResultSet rs, @SuppressWarnings("unused") final int rowNum) throws SQLException {
-
             final Long id = rs.getLong("id");
             final Long chargeId = rs.getLong("chargeId");
             final String name = rs.getString("name");
@@ -139,8 +129,6 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
     @Override
     public ChargeData retrieveLoanChargeTemplate() {
-        this.context.authenticatedUser();
-
         final List<EnumOptionData> allowedChargeCalculationTypeOptions = this.chargeDropdownReadPlatformService.retrieveCalculationTypes();
         final List<EnumOptionData> allowedChargeTimeOptions = this.chargeDropdownReadPlatformService.retrieveCollectionTimeTypes();
         final List<EnumOptionData> loansChargeCalculationTypeOptions = this.chargeDropdownReadPlatformService
@@ -173,25 +161,21 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
     @Override
     public LoanChargeData retrieveLoanChargeDetails(final Long id, final Long loanId) {
-        this.context.authenticatedUser();
-
         final LoanChargeMapper rm = new LoanChargeMapper();
 
         final String sql = "select " + rm.schema() + " where lc.id=? and lc.loan_id=?";
 
-        return this.jdbcTemplate.queryForObject(sql, rm, new Object[] { id, loanId }); // NOSONAR
+        return this.jdbcTemplate.queryForObject(sql, rm, id, loanId); // NOSONAR
     }
 
     @Override
     public Collection<LoanChargeData> retrieveLoanCharges(final Long loanId) {
-        this.context.authenticatedUser();
-
         final LoanChargeMapper rm = new LoanChargeMapper();
 
         final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true"
                 + " order by coalesce(lc.due_for_collection_as_of_date,date(coalesce(dd.disbursedon_date,dd.expected_disburse_date))),lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
-        return this.jdbcTemplate.query(sql, rm, new Object[] { loanId }); // NOSONAR
+        return this.jdbcTemplate.query(sql, rm, loanId); // NOSONAR
     }
 
     @Override
@@ -199,7 +183,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
         final LoanChargeMapperWithLoanId rm = new LoanChargeMapperWithLoanId();
         final String sql = "select " + rm.schema()
                 + "where loan.loan_status_id= ? and lc.charge_payment_mode_enum=? and lc.waived = false and lc.is_paid_derived=false and lc.is_active = true";
-        return this.jdbcTemplate.query(sql, rm, new Object[] { loanStatus, paymentMode }); // NOSONAR
+        return this.jdbcTemplate.query(sql, rm, loanStatus, paymentMode); // NOSONAR
     }
 
     private static final class LoanChargeMapperWithLoanId implements RowMapper<LoanChargeData> {
@@ -232,7 +216,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
             sql = sql + "and lic.waived = false and lic.is_paid_derived=false";
         }
         sql = sql + " order by lsi.installment";
-        return this.jdbcTemplate.query(sql, rm, new Object[] { loanChargeId }); // NOSONAR
+        return this.jdbcTemplate.query(sql, rm, loanChargeId); // NOSONAR
     }
 
     private static final class LoanInstallmentChargeMapper implements RowMapper<LoanInstallmentChargeData> {
@@ -279,8 +263,8 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
         final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id "
                 + " order by lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
-        Collection<LoanChargeData> charges = this.jdbcTemplate.query(sql, rm,
-                new Object[] { LoanTransactionType.ACCRUAL.getValue(), loanId, loanId }); // NOSONAR
+        Collection<LoanChargeData> charges = this.jdbcTemplate.query(sql, rm, // NOSONAR
+                LoanTransactionType.ACCRUAL.getValue(), loanId, loanId);
         charges = updateLoanChargesWithUnrecognizedIncome(loanId, charges);
 
         Collection<LoanChargeData> removeCharges = new ArrayList<>();
@@ -357,7 +341,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
         final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id "
                 + " order by lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
-        return this.jdbcTemplate.query(sql, rm, new Object[] { LoanTransactionType.WAIVE_CHARGES.getValue(), loanId, loanId }); // NOSONAR
+        return this.jdbcTemplate.query(sql, rm, LoanTransactionType.WAIVE_CHARGES.getValue(), loanId, loanId); // NOSONAR
     }
 
     private static final class LoanChargeUnRecognizedIncomeMapper implements RowMapper<LoanChargeData> {
@@ -404,8 +388,8 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
         final LoanInstallmentChargeAccrualMapper rm = new LoanInstallmentChargeAccrualMapper();
         String sql = "select " + rm.schema()
                 + " where lic.loan_charge_id= ?  group by lsi.installment, lsi.duedate, lic.amount_outstanding_derived, lic.amount, lic.is_paid_derived, lic.amount_waived_derived, lic.waived";
-        Collection<LoanInstallmentChargeData> chargeDatas = this.jdbcTemplate.query(sql, rm,
-                new Object[] { LoanTransactionType.ACCRUAL.getValue(), loanChargeId }); // NOSONAR
+        Collection<LoanInstallmentChargeData> chargeDatas = this.jdbcTemplate.query(sql, rm, // NOSONAR
+                LoanTransactionType.ACCRUAL.getValue(), loanChargeId);
         final Map<Integer, LoanInstallmentChargeData> installmentChargeDatas = new HashMap<>();
         for (LoanInstallmentChargeData installmentChargeData : chargeDatas) {
             installmentChargeDatas.put(installmentChargeData.getInstallmentNumber(), installmentChargeData);
@@ -466,7 +450,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
             final Map<Integer, LoanInstallmentChargeData> installmentChargeDatas) {
         final LoanInstallmentChargeUnRecognizedIncomeMapper rm = new LoanInstallmentChargeUnRecognizedIncomeMapper(installmentChargeDatas);
         String sql = "select " + rm.schema() + " where cpb.loan_charge_id = ? group by cpb.installment_number  ";
-        return this.jdbcTemplate.query(sql, rm, new Object[] { LoanTransactionType.WAIVE_CHARGES.getValue(), loanChargeId }); // NOSONAR
+        return this.jdbcTemplate.query(sql, rm, LoanTransactionType.WAIVE_CHARGES.getValue(), loanChargeId); // NOSONAR
     }
 
     private static final class LoanInstallmentChargeUnRecognizedIncomeMapper implements RowMapper<LoanInstallmentChargeData> {

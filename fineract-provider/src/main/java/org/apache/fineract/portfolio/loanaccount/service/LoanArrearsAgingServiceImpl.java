@@ -28,108 +28,64 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
-import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
-import org.apache.fineract.infrastructure.jobs.annotation.CronTarget;
-import org.apache.fineract.infrastructure.jobs.service.JobName;
-import org.apache.fineract.portfolio.common.BusinessEventNotificationConstants.BusinessEntity;
-import org.apache.fineract.portfolio.common.BusinessEventNotificationConstants.BusinessEvents;
-import org.apache.fineract.portfolio.common.service.BusinessEventListener;
-import org.apache.fineract.portfolio.common.service.BusinessEventNotifierService;
+import org.apache.fineract.portfolio.businessevent.BusinessEventListener;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanAdjustTransactionBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanApplyOverdueChargeBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanDisbursalBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.charge.LoanAddChargeBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.charge.LoanWaiveChargeBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanChargePaymentPostBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanForeClosurePostBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanRefundPostBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanTransactionMakeRepaymentPostBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanUndoWrittenOffBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.transaction.LoanWaiveInterestBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanCharge;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanSummary;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanSchedulePeriodData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, BusinessEventListener {
+@Slf4j
+@RequiredArgsConstructor
+public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(LoanArrearsAgingServiceImpl.class);
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    private final JdbcTemplate jdbcTemplate;
     private final BusinessEventNotifierService businessEventNotifierService;
     private final DatabaseSpecificSQLGenerator sqlGenerator;
-    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private final JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    public LoanArrearsAgingServiceImpl(final JdbcTemplate jdbcTemplate, final BusinessEventNotifierService businessEventNotifierService,
-            DatabaseSpecificSQLGenerator sqlGenerator) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.businessEventNotifierService = businessEventNotifierService;
-        this.sqlGenerator = sqlGenerator;
-    }
 
     @PostConstruct
     public void registerForNotification() {
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_REFUND, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_ADJUST_TRANSACTION, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_MAKE_REPAYMENT, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_UNDO_WRITTEN_OFF, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_WAIVE_INTEREST, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_ADD_CHARGE, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_WAIVE_CHARGE, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_CHARGE_PAYMENT, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_APPLY_OVERDUE_CHARGE, this);
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_DISBURSAL, new DisbursementEventListener());
-        this.businessEventNotifierService.addBusinessEventPostListeners(BusinessEvents.LOAN_FORECLOSURE, this);
-    }
-
-    @Transactional
-    @Override
-    @CronTarget(jobName = JobName.UPDATE_LOAN_ARREARS_AGEING)
-    public void updateLoanArrearsAgeingDetails() {
-
-        this.jdbcTemplate.execute("truncate table m_loan_arrears_aging");
-
-        final StringBuilder updateSqlBuilder = new StringBuilder(900);
-        final String principalOverdueCalculationSql = "SUM(COALESCE(mr.principal_amount, 0) - coalesce(mr.principal_completed_derived, 0) - coalesce(mr.principal_writtenoff_derived, 0))";
-        final String interestOverdueCalculationSql = "SUM(COALESCE(mr.interest_amount, 0) - coalesce(mr.interest_writtenoff_derived, 0) - coalesce(mr.interest_waived_derived, 0) - "
-                + "coalesce(mr.interest_completed_derived, 0))";
-        final String feeChargesOverdueCalculationSql = "SUM(COALESCE(mr.fee_charges_amount, 0) - coalesce(mr.fee_charges_writtenoff_derived, 0) - "
-                + "coalesce(mr.fee_charges_waived_derived, 0) - coalesce(mr.fee_charges_completed_derived, 0))";
-        final String penaltyChargesOverdueCalculationSql = "SUM(COALESCE(mr.penalty_charges_amount, 0) - coalesce(mr.penalty_charges_writtenoff_derived, 0) - "
-                + "coalesce(mr.penalty_charges_waived_derived, 0) - coalesce(mr.penalty_charges_completed_derived, 0))";
-
-        updateSqlBuilder.append(
-                "INSERT INTO m_loan_arrears_aging(loan_id,principal_overdue_derived,interest_overdue_derived,fee_charges_overdue_derived,penalty_charges_overdue_derived,total_overdue_derived,overdue_since_date_derived)");
-        updateSqlBuilder.append("select ml.id as loanId,");
-        updateSqlBuilder.append(principalOverdueCalculationSql + " as principal_overdue_derived,");
-        updateSqlBuilder.append(interestOverdueCalculationSql + " as interest_overdue_derived,");
-        updateSqlBuilder.append(feeChargesOverdueCalculationSql + " as fee_charges_overdue_derived,");
-        updateSqlBuilder.append(penaltyChargesOverdueCalculationSql + " as penalty_charges_overdue_derived,");
-        updateSqlBuilder.append(principalOverdueCalculationSql + "+" + interestOverdueCalculationSql + "+");
-        updateSqlBuilder.append(feeChargesOverdueCalculationSql + "+" + penaltyChargesOverdueCalculationSql + " as total_overdue_derived,");
-        updateSqlBuilder.append("MIN(mr.duedate) as overdue_since_date_derived ");
-        updateSqlBuilder.append(" FROM m_loan ml ");
-        updateSqlBuilder.append(" INNER JOIN m_loan_repayment_schedule mr on mr.loan_id = ml.id ");
-        updateSqlBuilder.append(" left join m_product_loan_recalculation_details prd on prd.product_id = ml.product_id ");
-        updateSqlBuilder.append(" WHERE ml.loan_status_id = 300 "); // active
-        updateSqlBuilder.append(" and mr.completed_derived is false ");
-        updateSqlBuilder.append(" and mr.duedate < ")
-                .append(sqlGenerator.subDate(sqlGenerator.currentDate(), "COALESCE(ml.grace_on_arrears_ageing, 0)", "day")).append(" ");
-        updateSqlBuilder.append(" and (prd.arrears_based_on_original_schedule = false or prd.arrears_based_on_original_schedule is null) ");
-        updateSqlBuilder.append(" GROUP BY ml.id");
-
-        List<String> insertStatements = updateLoanArrearsAgeingDetailsWithOriginalSchedule();
-        insertStatements.add(0, updateSqlBuilder.toString());
-        final int[] results = this.jdbcTemplate.batchUpdate(insertStatements.toArray(new String[0]));
-        int result = 0;
-        for (int i : results) {
-            result += i;
-        }
-
-        LOG.info("{}: Records affected by updateLoanArrearsAgeingDetails: {}", ThreadLocalContextUtil.getTenant().getName(), result);
+        businessEventNotifierService.addPostBusinessEventListener(LoanRefundPostBusinessEvent.class, new RefundEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanAdjustTransactionBusinessEvent.class,
+                new AdjustTransactionBusinessEventEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanTransactionMakeRepaymentPostBusinessEvent.class,
+                new MakeRepaymentEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanUndoWrittenOffBusinessEvent.class, new UndoWrittenOffEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanWaiveInterestBusinessEvent.class, new WaiveInterestEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanAddChargeBusinessEvent.class, new AddChargeEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanWaiveChargeBusinessEvent.class, new WaiveChargeEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanChargePaymentPostBusinessEvent.class,
+                new LoanChargePaymentEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanApplyOverdueChargeBusinessEvent.class,
+                new ApplyOverdueChargeEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanDisbursalBusinessEvent.class, new DisbursementEventListener());
+        businessEventNotifierService.addPostBusinessEventListener(LoanForeClosurePostBusinessEvent.class,
+                new LoanForeClosureEventListener());
     }
 
     @Override
@@ -142,15 +98,21 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
                 originalScheduleExtractor);
         if (scheduleDate.size() > 0) {
             List<Map<String, Object>> transactions = getLoanSummary(loan.getId(), loan.getLoanSummary());
-            updateSchheduleWithPaidDetail(scheduleDate, transactions);
+            updateScheduleWithPaidDetail(scheduleDate, transactions);
             createInsertStatements(updateStatement, scheduleDate, count == 0);
             if (updateStatement.size() == 1) {
                 this.jdbcTemplate.update(updateStatement.get(0));
             } else {
                 String deletestatement = "DELETE FROM m_loan_arrears_aging WHERE  loan_id=?";
-                this.jdbcTemplate.update(deletestatement, new Object[] { loan.getId() }); // NOSONAR
+                this.jdbcTemplate.update(deletestatement, loan.getId()); // NOSONAR
             }
         }
+    }
+
+    @Override
+    public Map<Long, List<LoanSchedulePeriodData>> getScheduleDate(String loanId) {
+        OriginalScheduleExtractor originalScheduleExtractor = new OriginalScheduleExtractor(loanId, sqlGenerator);
+        return this.jdbcTemplate.query(originalScheduleExtractor.schema, originalScheduleExtractor);
     }
 
     @Override
@@ -160,7 +122,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         String updateStatement = constructUpdateStatement(loan, count == 0);
         if (updateStatement == null) {
             String deletestatement = "DELETE FROM m_loan_arrears_aging WHERE  loan_id=?";
-            this.jdbcTemplate.update(deletestatement, new Object[] { loan.getId() }); // NOSONAR
+            this.jdbcTemplate.update(deletestatement, loan.getId()); // NOSONAR
         } else {
             this.jdbcTemplate.update(updateStatement);
         }
@@ -173,9 +135,10 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         BigDecimal interestOverdue = BigDecimal.ZERO;
         BigDecimal feeOverdue = BigDecimal.ZERO;
         BigDecimal penaltyOverdue = BigDecimal.ZERO;
-        LocalDate overDueSince = LocalDate.now(DateUtils.getDateTimeZoneOfTenant());
+        LocalDate businessDate = DateUtils.getBusinessLocalDate();
+        LocalDate overDueSince = businessDate;
         for (LoanRepaymentScheduleInstallment installment : installments) {
-            if (installment.getDueDate().isBefore(LocalDate.now(DateUtils.getDateTimeZoneOfTenant()))) {
+            if (installment.getDueDate().isBefore(businessDate)) {
                 principalOverdue = principalOverdue.add(installment.getPrincipalOutstanding(loan.getCurrency()).getAmount());
                 interestOverdue = interestOverdue.add(installment.getInterestOutstanding(loan.getCurrency()).getAmount());
                 feeOverdue = feeOverdue.add(installment.getFeeChargesOutstanding(loan.getCurrency()).getAmount());
@@ -199,50 +162,6 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         return updateSql;
     }
 
-    private List<String> updateLoanArrearsAgeingDetailsWithOriginalSchedule() {
-        List<String> insertStatement = new ArrayList<>();
-
-        final StringBuilder loanIdentifier = new StringBuilder();
-        loanIdentifier.append("select ml.id as loanId FROM m_loan ml  ");
-        loanIdentifier.append("INNER JOIN m_loan_repayment_schedule mr on mr.loan_id = ml.id ");
-        loanIdentifier.append(
-                "inner join m_product_loan_recalculation_details prd on prd.product_id = ml.product_id and prd.arrears_based_on_original_schedule = true  ");
-        loanIdentifier.append("WHERE ml.loan_status_id = 300  and mr.completed_derived is false  and mr.duedate < ")
-                .append(sqlGenerator.subDate(sqlGenerator.currentDate(), "COALESCE(ml.grace_on_arrears_ageing, 0)", "day"))
-                .append(" group by ml.id");
-        List<Long> loanIds = this.jdbcTemplate.queryForList(loanIdentifier.toString(), Long.class);
-        if (!loanIds.isEmpty()) {
-            String loanIdsAsString = loanIds.toString();
-            loanIdsAsString = loanIdsAsString.substring(1, loanIdsAsString.length() - 1);
-            OriginalScheduleExtractor originalScheduleExtractor = new OriginalScheduleExtractor(loanIdsAsString, sqlGenerator);
-            Map<Long, List<LoanSchedulePeriodData>> scheduleDate = this.jdbcTemplate.query(originalScheduleExtractor.schema,
-                    originalScheduleExtractor);
-
-            List<Map<String, Object>> loanSummary = getLoanSummary(loanIdsAsString);
-            updateSchheduleWithPaidDetail(scheduleDate, loanSummary);
-            createInsertStatements(insertStatement, scheduleDate, true);
-        }
-
-        return insertStatement;
-
-    }
-
-    private List<Map<String, Object>> getLoanSummary(final String loanIdsAsString) {
-        final StringBuilder transactionsSql = new StringBuilder();
-        transactionsSql.append("select ml.id as loanId, ");
-        transactionsSql
-                .append("ml.principal_repaid_derived as principalAmtPaid, ml.principal_writtenoff_derived as  principalAmtWrittenoff, ");
-        transactionsSql.append(" ml.interest_repaid_derived as interestAmtPaid, ml.interest_waived_derived as interestAmtWaived, ");
-        transactionsSql.append("ml.fee_charges_repaid_derived as feeAmtPaid, ml.fee_charges_waived_derived as feeAmtWaived, ");
-        transactionsSql
-                .append("ml.penalty_charges_repaid_derived as penaltyAmtPaid, ml.penalty_charges_waived_derived as penaltyAmtWaived ");
-        transactionsSql.append("from m_loan ml ");
-        transactionsSql.append("where ml.id IN (").append(loanIdsAsString).append(") order by ml.id");
-
-        List<Map<String, Object>> loanSummary = this.jdbcTemplate.queryForList(transactionsSql.toString());
-        return loanSummary;
-    }
-
     private List<Map<String, Object>> getLoanSummary(final Long loanId, final LoanSummary loanSummary) {
         List<Map<String, Object>> transactionDetail = new ArrayList<>();
         Map<String, Object> transactionMap = new HashMap<>();
@@ -261,7 +180,8 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
 
     }
 
-    private void createInsertStatements(List<String> insertStatement, Map<Long, List<LoanSchedulePeriodData>> scheduleDate,
+    @Override
+    public void createInsertStatements(List<String> insertStatement, Map<Long, List<LoanSchedulePeriodData>> scheduleDate,
             boolean isInsertStatement) {
         for (Map.Entry<Long, List<LoanSchedulePeriodData>> entry : scheduleDate.entrySet()) {
             final Long loanId = entry.getKey();
@@ -269,7 +189,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
             BigDecimal interestOverdue = BigDecimal.ZERO;
             BigDecimal feeOverdue = BigDecimal.ZERO;
             BigDecimal penaltyOverdue = BigDecimal.ZERO;
-            LocalDate overDueSince = LocalDate.now(DateUtils.getDateTimeZoneOfTenant());
+            LocalDate overDueSince = DateUtils.getBusinessLocalDate();
 
             for (LoanSchedulePeriodData loanSchedulePeriodData : entry.getValue()) {
                 if (!loanSchedulePeriodData.getComplete()) {
@@ -332,25 +252,10 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         return insertStatementBuilder.toString();
     }
 
-    private void updateSchheduleWithPaidDetail(Map<Long, List<LoanSchedulePeriodData>> scheduleDate,
-            List<Map<String, Object>> loanSummary) {
+    @Override
+    public void updateScheduleWithPaidDetail(Map<Long, List<LoanSchedulePeriodData>> scheduleDate, List<Map<String, Object>> loanSummary) {
         for (Map<String, Object> transactionMap : loanSummary) {
-            String longValue = transactionMap.get("loanId").toString(); // From
-                                                                        // JDBC
-                                                                        // Template
-                                                                        // API,
-                                                                        // we
-                                                                        // are
-                                                                        // getting
-                                                                        // BigInteger
-                                                                        // but
-                                                                        // in
-                                                                        // other
-                                                                        // call,
-                                                                        // we
-                                                                        // are
-                                                                        // getting
-                                                                        // Long
+            String longValue = transactionMap.get("loanId").toString();
             Long loanId = Long.parseLong(longValue);
             BigDecimal principalAmtPaid = (BigDecimal) transactionMap.get("principalAmtPaid");
             BigDecimal principalAmtWrittenoff = (BigDecimal) transactionMap.get("principalAmtWrittenoff");
@@ -366,15 +271,15 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
             BigDecimal feeAmt = feeAmtPaid.add(feeAmtWaived);
             BigDecimal penaltyAmt = penaltyAmtPaid.add(penaltyAmtWaived);
 
-            List<LoanSchedulePeriodData> loanSchedulePeriodDatas = scheduleDate.get(loanId);
-            if (loanSchedulePeriodDatas != null) {
-                List<LoanSchedulePeriodData> updatedPeriodData = new ArrayList<>(loanSchedulePeriodDatas.size());
-                for (LoanSchedulePeriodData loanSchedulePeriodData : loanSchedulePeriodDatas) {
-                    BigDecimal principalPaid = null;
-                    BigDecimal interestPaid = null;
-                    BigDecimal feeChargesPaid = null;
-                    BigDecimal penaltyChargesPaid = null;
-                    Boolean isComplete = true;
+            List<LoanSchedulePeriodData> loanSchedulePeriodDataList = scheduleDate.get(loanId);
+            if (loanSchedulePeriodDataList != null) {
+                List<LoanSchedulePeriodData> updatedPeriodData = new ArrayList<>(loanSchedulePeriodDataList.size());
+                for (LoanSchedulePeriodData loanSchedulePeriodData : loanSchedulePeriodDataList) {
+                    BigDecimal principalPaid;
+                    BigDecimal interestPaid;
+                    BigDecimal feeChargesPaid;
+                    BigDecimal penaltyChargesPaid;
+                    boolean isComplete = true;
                     if (loanSchedulePeriodData.principalDue().compareTo(principalAmt) > 0) {
                         principalPaid = principalAmt;
                         principalAmt = BigDecimal.ZERO;
@@ -413,8 +318,8 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
                             principalPaid, interestPaid, feeChargesPaid, penaltyChargesPaid);
                     updatedPeriodData.add(periodData);
                 }
-                loanSchedulePeriodDatas.clear();
-                loanSchedulePeriodDatas.addAll(updatedPeriodData);
+                loanSchedulePeriodDataList.clear();
+                loanSchedulePeriodDataList.addAll(updatedPeriodData);
             }
         }
     }
@@ -430,7 +335,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
                     "mr.interest_amount as interestAmount, mr.fee_charges_amount as feeAmount, mr.penalty_charges_amount as penaltyAmount  ");
             scheduleDetail.append("from m_loan ml  INNER JOIN m_loan_repayment_schedule_history mr on mr.loan_id = ml.id ");
             scheduleDetail.append("where mr.duedate  < "
-                    + sqlGenerator.subDate(sqlGenerator.currentDate(), "COALESCE(ml.grace_on_arrears_ageing, 0)", "day") + " and ");
+                    + sqlGenerator.subDate(sqlGenerator.currentBusinessDate(), "COALESCE(ml.grace_on_arrears_ageing, 0)", "day") + " and ");
             scheduleDetail.append("ml.id IN(").append(loanIdsAsString).append(") and  mr.version = (");
             scheduleDetail.append("select max(lrs.version) from m_loan_repayment_schedule_history lrs where mr.loan_id = lrs.loan_id");
             scheduleDetail.append(") order by ml.id,mr.duedate");
@@ -444,11 +349,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
             while (rs.next()) {
                 Long loanId = rs.getLong("loanId");
 
-                List<LoanSchedulePeriodData> periodDatas = scheduleDate.get(loanId);
-                if (periodDatas == null) {
-                    periodDatas = new ArrayList<>();
-                    scheduleDate.put(loanId, periodDatas);
-                }
+                List<LoanSchedulePeriodData> periodDatas = scheduleDate.computeIfAbsent(loanId, k -> new ArrayList<>());
 
                 periodDatas.add(fetchLoanSchedulePeriodData(rs));
             }
@@ -474,32 +375,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         }
     }
 
-    @SuppressWarnings("unused")
-    @Override
-    public void businessEventToBeExecuted(Map<BusinessEntity, Object> businessEventEntity) {
-        // TODO Auto-generated method stub
-
-    }
-
-    @Override
-    public void businessEventWasExecuted(Map<BusinessEntity, Object> businessEventEntity) {
-        Loan loan = null;
-        Object loanEntity = businessEventEntity.get(BusinessEntity.LOAN);
-        Object loanTransactionEntity = businessEventEntity.get(BusinessEntity.LOAN_TRANSACTION);
-        Object loanAdjustTransactionEntity = businessEventEntity.get(BusinessEntity.LOAN_ADJUSTED_TRANSACTION);
-        Object loanChargeEntity = businessEventEntity.get(BusinessEntity.LOAN_CHARGE);
-        if (loanEntity != null) {
-            loan = (Loan) loanEntity;
-        } else if (loanTransactionEntity != null) {
-            LoanTransaction loanTransaction = (LoanTransaction) loanTransactionEntity;
-            loan = loanTransaction.getLoan();
-        } else if (loanAdjustTransactionEntity != null) {
-            LoanTransaction loanTransaction = (LoanTransaction) loanAdjustTransactionEntity;
-            loan = loanTransaction.getLoan();
-        } else if (loanChargeEntity != null) {
-            LoanCharge loanCharge = (LoanCharge) loanChargeEntity;
-            loan = loanCharge.getLoan();
-        }
+    private void handleArrearsForLoan(Loan loan) {
         if (loan != null && loan.isOpen() && loan.repaymentScheduleDetail().isInterestRecalculationEnabled()
                 && loan.loanProduct().isArrearsBasedOnOriginalSchedule()) {
             updateLoanArrearsAgeingDetailsWithOriginalSchedule(loan);
@@ -508,24 +384,116 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService, Bus
         }
     }
 
-    private class DisbursementEventListener implements BusinessEventListener {
+    private class RefundEventListener implements BusinessEventListener<LoanRefundPostBusinessEvent> {
 
         @SuppressWarnings("unused")
         @Override
-        public void businessEventToBeExecuted(Map<BusinessEntity, Object> businessEventEntity) {
-            // TODO Auto-generated method stub
-
+        public void onBusinessEvent(LoanRefundPostBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
         }
+    }
+
+    private class AdjustTransactionBusinessEventEventListener implements BusinessEventListener<LoanAdjustTransactionBusinessEvent> {
 
         @Override
-        public void businessEventWasExecuted(Map<BusinessEntity, Object> businessEventEntity) {
-            Object loanEntity = businessEventEntity.get(BusinessEntity.LOAN);
-            if (loanEntity != null) {
-                Loan loan = (Loan) loanEntity;
-                updateLoanArrearsAgeingDetails(loan);
+        public void onBusinessEvent(LoanAdjustTransactionBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get().getTransactionToAdjust();
+            if (loanTransaction == null) {
+                loanTransaction = event.get().getNewTransactionDetail();
             }
-
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
         }
+    }
 
+    private class MakeRepaymentEventListener implements BusinessEventListener<LoanTransactionMakeRepaymentPostBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanTransactionMakeRepaymentPostBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class UndoWrittenOffEventListener implements BusinessEventListener<LoanUndoWrittenOffBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanUndoWrittenOffBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class WaiveInterestEventListener implements BusinessEventListener<LoanWaiveInterestBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanWaiveInterestBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class LoanForeClosureEventListener implements BusinessEventListener<LoanForeClosurePostBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanForeClosurePostBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class LoanChargePaymentEventListener implements BusinessEventListener<LoanChargePaymentPostBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanChargePaymentPostBusinessEvent event) {
+            LoanTransaction loanTransaction = event.get();
+            Loan loan = loanTransaction.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class AddChargeEventListener implements BusinessEventListener<LoanAddChargeBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanAddChargeBusinessEvent event) {
+            LoanCharge loanCharge = event.get();
+            Loan loan = loanCharge.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class WaiveChargeEventListener implements BusinessEventListener<LoanWaiveChargeBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanWaiveChargeBusinessEvent event) {
+            LoanCharge loanCharge = event.get();
+            Loan loan = loanCharge.getLoan();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class ApplyOverdueChargeEventListener implements BusinessEventListener<LoanApplyOverdueChargeBusinessEvent> {
+
+        @Override
+        public void onBusinessEvent(LoanApplyOverdueChargeBusinessEvent event) {
+            Loan loan = event.get();
+            handleArrearsForLoan(loan);
+        }
+    }
+
+    private class DisbursementEventListener implements BusinessEventListener<LoanDisbursalBusinessEvent> {
+
+        @SuppressWarnings("unused")
+        @Override
+        public void onBusinessEvent(LoanDisbursalBusinessEvent event) {
+            Loan loan = event.get();
+            updateLoanArrearsAgeingDetails(loan);
+        }
     }
 }

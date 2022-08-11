@@ -75,6 +75,9 @@ public final class ResultsetColumnHeaderData implements Serializable {
             if (isString()) {
                 displayType = "STRING";
             } else if (isAnyInteger()) {
+                if (isInteger()) {
+                    this.columnType = this.columnType.toUpperCase();
+                }
                 displayType = "INTEGER";
             } else if (isDate()) {
                 displayType = "DATE";
@@ -92,7 +95,7 @@ public final class ResultsetColumnHeaderData implements Serializable {
             }
 
         } else {
-            if (isInt()) {
+            if (isInt() || isInteger()) {
                 displayType = "CODELOOKUP";
             } else if (isVarchar()) {
                 displayType = "CODEVALUE";
@@ -157,7 +160,8 @@ public final class ResultsetColumnHeaderData implements Serializable {
     }
 
     private boolean isDecimal() {
-        return "decimal".equalsIgnoreCase(this.columnType) || "NEWDECIMAL".equalsIgnoreCase(this.columnType);
+        return "decimal".equalsIgnoreCase(this.columnType) || "NEWDECIMAL".equalsIgnoreCase(this.columnType)
+                || "numeric".equalsIgnoreCase(this.columnType);
         // Refer org.drizzle.jdbc.internal.mysql.MySQLType.java
     }
 
@@ -175,7 +179,8 @@ public final class ResultsetColumnHeaderData implements Serializable {
     }
 
     private boolean isChar() {
-        return "char".equalsIgnoreCase(this.columnType) || "CHARACTER VARYING".equalsIgnoreCase(this.columnType);
+        return "char".equalsIgnoreCase(this.columnType) || "CHARACTER VARYING".equalsIgnoreCase(this.columnType)
+                || "bpchar".equalsIgnoreCase(this.columnType);
     }
 
     private boolean isVarchar() {
@@ -197,7 +202,8 @@ public final class ResultsetColumnHeaderData implements Serializable {
     }
 
     private boolean isInteger() {
-        return "integer".equalsIgnoreCase(this.columnType) || "int4".equalsIgnoreCase(this.columnType);
+        return "integer".equalsIgnoreCase(this.columnType) || "int2".equalsIgnoreCase(this.columnType)
+                || "int4".equalsIgnoreCase(this.columnType);
     }
 
     private boolean isSmallInt() {
@@ -319,5 +325,9 @@ public final class ResultsetColumnHeaderData implements Serializable {
 
     public String getColumnCode() {
         return this.columnCode;
+    }
+
+    public List<ResultsetColumnValueData> getColumnValues() {
+        return this.columnValues;
     }
 }

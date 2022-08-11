@@ -19,8 +19,13 @@
 
 package org.apache.fineract.infrastructure.core.config;
 
+import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+@Getter
+@Setter
 @ConfigurationProperties(prefix = "fineract")
 public class FineractProperties {
 
@@ -28,22 +33,14 @@ public class FineractProperties {
 
     private FineractTenantProperties tenant;
 
-    public String getNodeId() {
-        return nodeId;
-    }
+    private FineractModeProperties mode;
 
-    public void setNodeId(String nodeId) {
-        this.nodeId = nodeId;
-    }
+    private FineractCorrelationProperties correlation;
 
-    public FineractTenantProperties getTenant() {
-        return tenant;
-    }
+    private FineractPartitionedJob partitionedJob;
 
-    public void setTenant(FineractTenantProperties tenant) {
-        this.tenant = tenant;
-    }
-
+    @Getter
+    @Setter
     public static class FineractTenantProperties {
 
         private String host;
@@ -55,77 +52,45 @@ public class FineractProperties {
         private String identifier;
         private String name;
         private String description;
+    }
 
-        public String getHost() {
-            return host;
-        }
+    @Getter
+    @Setter
+    public static class FineractModeProperties {
 
-        public void setHost(String host) {
-            this.host = host;
-        }
+        private boolean readEnabled;
+        private boolean writeEnabled;
+        private boolean batchWorkerEnabled;
+        private boolean batchManagerEnabled;
 
-        public Integer getPort() {
-            return port;
+        public boolean isReadOnlyMode() {
+            return readEnabled && !writeEnabled && !batchWorkerEnabled && !batchManagerEnabled;
         }
+    }
 
-        public void setPort(Integer port) {
-            this.port = port;
-        }
+    @Getter
+    @Setter
+    public static class FineractCorrelationProperties {
 
-        public String getUsername() {
-            return username;
-        }
+        private boolean enabled;
+        private String headerName;
+    }
 
-        public void setUsername(String username) {
-            this.username = username;
-        }
+    @Getter
+    @Setter
+    public static class FineractPartitionedJob {
 
-        public String getPassword() {
-            return password;
-        }
+        // TODO should be used without wrapper class
+        private List<PartitionedJobProperty> partitionedJobProperties;
+    }
 
-        public void setPassword(String password) {
-            this.password = password;
-        }
+    @Getter
+    @Setter
+    public static class PartitionedJobProperty {
 
-        public String getParameters() {
-            return parameters;
-        }
-
-        public void setParameters(String parameters) {
-            this.parameters = parameters;
-        }
-
-        public String getTimezone() {
-            return timezone;
-        }
-
-        public void setTimezone(String timezone) {
-            this.timezone = timezone;
-        }
-
-        public String getIdentifier() {
-            return identifier;
-        }
-
-        public void setIdentifier(String identifier) {
-            this.identifier = identifier;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public void setDescription(String description) {
-            this.description = description;
-        }
+        private String jobName;
+        private Integer chunkSize;
+        private Integer partitionSize;
+        private Integer threadCount;
     }
 }

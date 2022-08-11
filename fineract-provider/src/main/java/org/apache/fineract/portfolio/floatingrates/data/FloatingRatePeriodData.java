@@ -21,6 +21,7 @@ package org.apache.fineract.portfolio.floatingrates.data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import org.apache.commons.lang3.builder.CompareToBuilder;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
@@ -33,12 +34,12 @@ public class FloatingRatePeriodData implements Comparable<FloatingRatePeriodData
     private boolean isDifferentialToBaseLendingRate;
     private boolean isActive;
     private String createdBy;
-    private LocalDate createdOn;
+    private OffsetDateTime createdOn;
     private String modifiedBy;
-    private LocalDate modifiedOn;
+    private OffsetDateTime modifiedOn;
 
     public FloatingRatePeriodData(Long id, LocalDate fromDate, BigDecimal interestRate, boolean isDifferentialToBaseLendingRate,
-            boolean isActive, String createdBy, LocalDate createdOn, String modifiedBy, LocalDate modifiedOn) {
+            boolean isActive, String createdBy, OffsetDateTime createdOn, String modifiedBy, OffsetDateTime modifiedOn) {
         this.id = id;
         this.fromDate = fromDate;
         this.interestRate = interestRate;
@@ -48,6 +49,15 @@ public class FloatingRatePeriodData implements Comparable<FloatingRatePeriodData
         this.createdOn = createdOn;
         this.modifiedBy = modifiedBy;
         this.modifiedOn = modifiedOn;
+    }
+
+    public FloatingRatePeriodData(Long id, LocalDate fromDate, BigDecimal interestRate, boolean isDifferentialToBaseLendingRate,
+            boolean isActive) {
+        this.id = id;
+        this.fromDate = fromDate;
+        this.interestRate = interestRate;
+        this.isDifferentialToBaseLendingRate = isDifferentialToBaseLendingRate;
+        this.isActive = isActive;
     }
 
     public Long getId() {
@@ -78,7 +88,7 @@ public class FloatingRatePeriodData implements Comparable<FloatingRatePeriodData
         return this.createdBy;
     }
 
-    public LocalDate getCreatedOn() {
+    public OffsetDateTime getCreatedOn() {
         return this.createdOn;
     }
 
@@ -86,7 +96,7 @@ public class FloatingRatePeriodData implements Comparable<FloatingRatePeriodData
         return this.modifiedBy;
     }
 
-    public LocalDate getModifiedOn() {
+    public OffsetDateTime getModifiedOn() {
         return this.modifiedOn;
     }
 

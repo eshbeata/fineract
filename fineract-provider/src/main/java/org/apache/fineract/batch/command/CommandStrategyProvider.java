@@ -84,20 +84,35 @@ public class CommandStrategyProvider {
         this.commandStrategies.put(CommandContext.resource("clients").method("POST").build(), "createClientCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("clients\\/\\d+").method("PUT").build(), "updateClientCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans").method("POST").build(), "applyLoanCommandStrategy");
+        this.commandStrategies.put(CommandContext.resource("loans\\/\\d+").method("GET").build(), "getLoanByIdCommandStrategy");
+        this.commandStrategies.put(CommandContext.resource("loans/\\d+(\\?(\\w+(?:\\=[\\w,]+|&)+)+)").method("GET").build(),
+                "getLoanByIdCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("savingsaccounts").method("POST").build(), "applySavingsCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\/charges").method("POST").build(), "createChargeCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\/charges").method("GET").build(),
                 "collectChargesCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\/transactions\\?command=repayment").method("POST").build(),
-                "repayLoanCommandStrategy");
+                "createTransactionLoanCommandStrategy");
+        this.commandStrategies.put(
+                CommandContext.resource("loans\\/\\d+\\/transactions\\?command=creditBalanceRefund").method("POST").build(),
+                "createTransactionLoanCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("clients\\/\\d+\\?command=activate").method("POST").build(),
                 "activateClientCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\?command=approve").method("POST").build(),
                 "approveLoanCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\?command=disburse").method("POST").build(),
                 "disburseLoanCommandStrategy");
+        this.commandStrategies.put(CommandContext.resource("rescheduleloans").method("POST").build(),
+                "createLoanRescheduleRequestCommandStrategy");
         this.commandStrategies.put(CommandContext.resource("rescheduleloans\\/\\d+\\?command=approve").method("POST").build(),
                 "approveLoanRescheduleCommandStrategy");
+        this.commandStrategies.put(CommandContext.resource("loans\\/\\d+\\/transactions\\/\\d+").method("GET").build(),
+                "getTransactionByIdCommandStrategy");
+        this.commandStrategies.put(CommandContext.resource("datatables\\/[a-zA-Z0-9_]*\\/\\d+").method("GET").build(),
+                "getDatatableEntryByAppTableIdCommandStrategy");
+        this.commandStrategies.put(
+                CommandContext.resource("datatables\\/[a-zA-Z0-9_]*\\/\\d+(\\?(\\w+(?:\\=[\\w,]+|&)+)+)").method("GET").build(),
+                "getDatatableEntryByAppTableIdCommandStrategy");
     }
 
 }

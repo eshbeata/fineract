@@ -23,7 +23,6 @@ import java.util.Collection;
 import java.util.Map;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
-import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.calendar.domain.Calendar;
@@ -32,6 +31,7 @@ import org.apache.fineract.portfolio.collectionsheet.command.CollectionSheetBulk
 import org.apache.fineract.portfolio.collectionsheet.command.CollectionSheetBulkRepaymentCommand;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.OverdueLoanScheduleData;
 
 public interface LoanWritePlatformService {
@@ -43,7 +43,8 @@ public interface LoanWritePlatformService {
 
     CommandProcessingResult undoLoanDisbursal(Long loanId, JsonCommand command);
 
-    CommandProcessingResult makeLoanRepayment(Long loanId, JsonCommand command, boolean isRecoveryRepayment);
+    CommandProcessingResult makeLoanRepayment(LoanTransactionType repaymentTransactionType, Long loanId, JsonCommand command,
+            boolean isRecoveryRepayment);
 
     Map<String, Object> makeLoanBulkRepayment(CollectionSheetBulkRepaymentCommand bulkRepaymentCommand);
 
@@ -67,6 +68,8 @@ public interface LoanWritePlatformService {
 
     CommandProcessingResult undoWaiveLoanCharge(JsonCommand command);
 
+    CommandProcessingResult loanChargeRefund(Long loanId, JsonCommand command);
+
     CommandProcessingResult loanReassignment(Long loanId, JsonCommand command);
 
     CommandProcessingResult bulkLoanReassignment(JsonCommand command);
@@ -75,8 +78,6 @@ public interface LoanWritePlatformService {
 
     void applyMeetingDateChanges(Calendar calendar, Collection<CalendarInstance> loanCalendarInstances,
             Boolean reschedulebasedOnMeetingDates, LocalDate presentMeetingDate, LocalDate newMeetingDate);
-
-    void applyHolidaysToLoans();
 
     LoanTransaction initiateLoanTransfer(Loan loan, LocalDate transferDate);
 
@@ -87,8 +88,6 @@ public interface LoanWritePlatformService {
     LoanTransaction acceptLoanTransfer(Loan loan, LocalDate transferDate, Office acceptedInOffice, Staff loanOfficer);
 
     CommandProcessingResult payLoanCharge(Long loanId, Long loanChargeId, JsonCommand command, boolean isChargeIdIncludedInJson);
-
-    void transferFeeCharges() throws JobExecutionException;
 
     CommandProcessingResult undoWriteOff(Long loanId);
 
@@ -115,5 +114,7 @@ public interface LoanWritePlatformService {
     CommandProcessingResult undoGLIMLoanDisbursal(Long loanId, JsonCommand command);
 
     CommandProcessingResult makeGLIMLoanRepayment(Long loanId, JsonCommand command);
+
+    CommandProcessingResult creditBalanceRefund(Long loanId, JsonCommand command);
 
 }

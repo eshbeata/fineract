@@ -38,8 +38,8 @@ compileJava.doLast {
         description = 'Performs EclipseLink static weaving of entity classes'
         def target = source
         main 'org.eclipse.persistence.tools.weaving.jpa.StaticWeave'
-        args '-persistenceinfo', source, '-classpath', configurations.runtimeClasspath, source, target
-        classpath configurations.runtimeClasspath
+        args '-persistenceinfo', source, '-classpath', sourceSets.main.runtimeClasspath, source, target
+        classpath sourceSets.main.runtimeClasspath
     }
     delete {
         delete "${source}/META-INF/persistence.xml"
@@ -51,32 +51,29 @@ compileJava.doLast {
 import org.apache.tools.ant.filters.ReplaceTokens
 
 task prepareInputYaml {
-    outputs.file('config/swagger/fineract-input.yaml')
+    outputs.file("${buildDir}/tmp/swagger/fineract-input.yaml")
 
     doLast {
         copy {
-            from file('config/swagger/fineract-input.yaml.template')
-            into file('config/swagger')
+            from file("${projectDir}/config/swagger/fineract-input.yaml.template")
+            into file("${buildDir}/tmp/swagger")
             rename { String filename -> return 'fineract-input.yaml' }
             filter(ReplaceTokens, tokens: [VERSION: "${project.version}".toString()])
         }
     }
 }
 
-rat.dependsOn prepareInputYaml
-
 resolve {
     logging.captureStandardOutput LogLevel.INFO
     outputFileName = 'fineract'
-    outputFormat = 'YAML'
-    prettyPrint = true
+    outputFormat = 'JSONANDYAML'
+    prettyPrint = false
     classpath = sourceSets.main.runtimeClasspath
-    outputDir = file("${buildDir}/generated/swagger-ui")
-    openApiFile = file("config/swagger/fineract-input.yaml")
+    outputDir = file("${buildDir}/classes/java/main/static")
+    openApiFile = file("${buildDir}/tmp/swagger/fineract-input.yaml")
     sortOutput = true
+    dependsOn(prepareInputYaml)
 }
-
-resolve.dependsOn prepareInputYaml
 
 configurations {
     providedRuntime // needed for Spring Boot executable WAR
@@ -109,11 +106,6 @@ modernizer {
         '.*EntityTables',
         '.*domain.*'
     ]
-}
-
-compileJava {
-    dependsOn rat
-    finalizedBy resolve
 }
 
 // If we are running Gradle within Eclipse to enhance classes with OpenJPA,
@@ -157,8 +149,9 @@ configurations {
     driver
 }
 dependencies {
-    driver 'org.mariadb.jdbc:mariadb-java-client:2.7.5'
-    driver 'org.postgresql:postgresql:42.3.3'
+    driver 'org.mariadb.jdbc:mariadb-java-client:2.7.6'
+    driver 'org.postgresql:postgresql:42.4.0'
+    driver 'mysql:mysql-connector-java:8.0.30'
 }
 
 URLClassLoader loader = GroovyObject.class.classLoader
@@ -167,7 +160,7 @@ configurations.driver.each {File file ->
 }
 
 task createDB {
-    description= "Creates the MySQL Database. Needs database name to be passed (like: -PdbName=someDBname)"
+    description= "Creates the MariaDB Database. Needs database name to be passed (like: -PdbName=someDBname)"
     doLast {
         def sql = Sql.newInstance( 'jdbc:mariadb://localhost:3306/', mysqlUser, mysqlPassword, 'org.mariadb.jdbc.Driver' )
         sql.execute( 'create database '+"`$dbName`" )
@@ -175,7 +168,7 @@ task createDB {
 }
 
 task dropDB {
-    description= "Drops the specified MySQL database. The database name has to be passed (like: -PdbName=someDBname)"
+    description= "Drops the specified MariaDB database. The database name has to be passed (like: -PdbName=someDBname)"
     doLast {
         def sql = Sql.newInstance( 'jdbc:mariadb://localhost:3306/', mysqlUser, mysqlPassword, 'org.mariadb.jdbc.Driver' )
         sql.execute( 'DROP DATABASE '+"`$dbName`")
@@ -198,6 +191,22 @@ task dropPGDB {
     }
 }
 
+task createMySQLDB {
+    description= "Creates the MySQL Database. Needs database name to be passed (like: -PdbName=someDBname)"
+    doLast {
+        def sql = Sql.newInstance( 'jdbc:mysql://localhost:3306/', mysqlUser, mysqlPassword, 'com.mysql.cj.jdbc.Driver' )
+        sql.execute( 'create database '+"`$dbName`" )
+    }
+}
+
+task dropMySQLDB {
+    description= "Drops the specified MySQL database. The database name has to be passed (like: -PdbName=someDBname)"
+    doLast {
+        def sql = Sql.newInstance( 'jdbc:mysql://localhost:3306/', mysqlUser, mysqlPassword, 'com.mysql.cj.jdbc.Driver' )
+        sql.execute( 'DROP DATABASE '+"`$dbName`")
+    }
+}
+
 task setBlankPassword {
     doLast {
         def sql = Sql.newInstance( 'jdbc:mariadb://localhost:3306/', mysqlUser, mysqlPassword, 'org.mariadb.jdbc.Driver' )
@@ -212,11 +221,9 @@ bootRun {
     ]
 
     dependencies {
-        implementation 'org.mariadb.jdbc:mariadb-java-client:2.7.5'
-        implementation 'org.postgresql:postgresql:42.3.3'
+        implementation 'org.mariadb.jdbc:mariadb-java-client:2.7.6'
+        implementation 'org.postgresql:postgresql:42.4.0'
     }
-
-    classpath += files("build/generated/swagger-ui")
 }
 
 springBoot {
@@ -226,24 +233,11 @@ springBoot {
 bootJar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes 'Main-Class': 'org.springframework.boot.loader.PropertiesLauncher', 'Implementation-Title':   'Apache Fineract', 'Implementation-Version': archiveVersion
+        attributes('Main-Class': 'org.springframework.boot.loader.PropertiesLauncher', 'Implementation-Title': 'Apache Fineract', 'Implementation-Version': project.version)
     }
-    dependsOn resolve
     classifier = ''
-
-    from('build/generated/swagger-ui') {
-        into 'BOOT-INF/classes/static/swagger-ui'
-    }
+    dependsOn resolve
 }
-
-jar {
-    from('build/generated/swagger-ui') {
-        include '*'
-    }
-}
-
-jar.dependsOn resolve
-jar.dependsOn bootJar
 
 jib {
     from {
@@ -253,7 +247,7 @@ jib {
     to {
         image = 'fineract'
         tags = [
-            "${version}",
+            "${project.version}",
             'latest'
         ]
     }
@@ -262,7 +256,6 @@ jib {
         creationTime = 'USE_CURRENT_TIMESTAMP'
         mainClass = 'org.apache.fineract.ServerApplication'
         jvmFlags = [
-            '-Xmx1G',
             '-Xms1G',
             '-XshowSettings:vm',
             '-XX:+UseContainerSupport',
@@ -292,17 +285,8 @@ jib {
     allowInsecureRegistries = true
 
     dependencies {
-        implementation 'org.mariadb.jdbc:mariadb-java-client:2.7.5'
-        implementation 'org.postgresql:postgresql:42.3.3'
-    }
-
-    extraDirectories {
-        paths {
-            path {
-                from = file('build/generated/swagger-ui')
-                into = "/app/classes"
-            }
-        }
+        implementation 'org.mariadb.jdbc:mariadb-java-client:2.7.6'
+        implementation 'org.postgresql:postgresql:42.4.0'
     }
 
     pluginExtensions {
@@ -319,7 +303,7 @@ jib {
     }
 }
 
-tasks.jibDockerBuild.dependsOn = ["bootJar"]
+tasks.jibDockerBuild.dependsOn(bootJar)
 
 // Configuration for git properties gradle plugin
 // https://github.com/n0mer/gradle-git-properties
@@ -333,9 +317,12 @@ gitProperties {
 // make sure the generateGitProperties task always executes (even when git.properties is not changed)
 generateGitProperties.outputs.upToDateWhen { false }
 
-// Gradle 7.x asks for explicit dependencies between tasks
+// NOTE: Gradle suggested these dependencies
+jar.dependsOn resolve
+test.dependsOn resolve
 checkstyleMain.dependsOn resolve
 checkstyleTest.dependsOn resolve
-licenseMain.dependsOn processResources, generateGitProperties
+rat.dependsOn prepareInputYaml
 spotbugsTest.dependsOn resolve
-test.dependsOn resolve
+compileTestJava.dependsOn ':fineract-client:processResources'
+bootJarMainClassName.dependsOn resolve

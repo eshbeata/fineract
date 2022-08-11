@@ -21,7 +21,6 @@ package org.apache.fineract.portfolio.loanaccount.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
-import java.util.Date;
 import java.util.List;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.core.service.SearchParameters;
@@ -38,6 +37,7 @@ import org.apache.fineract.portfolio.loanaccount.data.LoanTermVariationsData;
 import org.apache.fineract.portfolio.loanaccount.data.LoanTransactionData;
 import org.apache.fineract.portfolio.loanaccount.data.PaidInAdvanceData;
 import org.apache.fineract.portfolio.loanaccount.data.RepaymentScheduleRelatedLoanData;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanScheduleData;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanSchedulePeriodData;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.OverdueLoanScheduleData;
@@ -114,7 +114,7 @@ public interface LoanReadPlatformService {
 
     List<Long> fetchLoansForInterestRecalculation(Integer pageSize, Long maxLoanIdInList, String officeHierarchy);
 
-    LoanTransactionData retrieveLoanPrePaymentTemplate(Long loanId, LocalDate onDate);
+    LoanTransactionData retrieveLoanPrePaymentTemplate(LoanTransactionType repaymentTransactionType, Long loanId, LocalDate onDate);
 
     Collection<LoanTransactionData> retrieveWaiverLoanTransactions(Long loanId);
 
@@ -122,11 +122,13 @@ public interface LoanReadPlatformService {
 
     boolean isGuaranteeRequired(Long loanId);
 
-    Date retrieveMinimumDateOfRepaymentTransaction(Long loanId);
+    LocalDate retrieveMinimumDateOfRepaymentTransaction(Long loanId);
 
     PaidInAdvanceData retrieveTotalPaidInAdvance(Long loanId);
 
     LoanTransactionData retrieveRefundByCashTemplate(Long loanId);
+
+    LoanTransactionData retrieveCreditBalanceRefundTemplate(Long loanId);
 
     Collection<InterestRatePeriodData> retrieveLoanInterestRatePeriodData(LoanAccountData loan);
 

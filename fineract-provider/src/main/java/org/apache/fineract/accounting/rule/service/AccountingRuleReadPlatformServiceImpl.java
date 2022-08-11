@@ -152,7 +152,7 @@ public class AccountingRuleReadPlatformServiceImpl implements AccountingRuleRead
         final AccountingRuleDataExtractor resultSetExtractor = new AccountingRuleDataExtractor(this.jdbcTemplate,
                 this.glAccountReadPlatformService, isAssociationParametersExists);
         Object[] arguments = new Object[] {};
-        String sql = "select " + resultSetExtractor.schema() + " and system_defined=0 ";
+        String sql = "select " + resultSetExtractor.schema() + " and system_defined=false ";
         if (hierarchySearchString != null) {
             sql = sql + " and office.hierarchy like ?";
             arguments = new Object[] { hierarchySearchString };
@@ -169,8 +169,8 @@ public class AccountingRuleReadPlatformServiceImpl implements AccountingRuleRead
                     this.glAccountReadPlatformService, false);
             final String sql = "select " + resultSetExtractor.schema() + " and rule.id = ?";
 
-            final Map<Long, AccountingRuleData> extractedData = this.jdbcTemplate.query(sql, resultSetExtractor,
-                    new Object[] { accountingRuleId }); // NOSONAR
+            final Map<Long, AccountingRuleData> extractedData = this.jdbcTemplate.query(sql, resultSetExtractor, // NOSONAR
+                    new Object[] { accountingRuleId });
             final AccountingRuleData accountingRuleData = extractedData.get(accountingRuleId);
             if (accountingRuleData == null) {
                 throw new AccountingRuleNotFoundException(accountingRuleId);

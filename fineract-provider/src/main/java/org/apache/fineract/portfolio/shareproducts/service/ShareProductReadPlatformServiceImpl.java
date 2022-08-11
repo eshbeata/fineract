@@ -19,13 +19,15 @@
 package org.apache.fineract.portfolio.shareproducts.service;
 
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.Collection;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import org.apache.fineract.accounting.common.AccountingDropdownReadPlatformService;
 import org.apache.fineract.accounting.common.AccountingEnumerations;
 import org.apache.fineract.accounting.glaccount.data.GLAccountData;
@@ -47,13 +49,13 @@ import org.apache.fineract.portfolio.products.service.ProductReadPlatformService
 import org.apache.fineract.portfolio.shareaccounts.service.SharesEnumerations;
 import org.apache.fineract.portfolio.shareproducts.data.ShareProductData;
 import org.apache.fineract.portfolio.shareproducts.data.ShareProductMarketPriceData;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
 @Service(value = "shareReadPlatformService")
+@RequiredArgsConstructor
 public class ShareProductReadPlatformServiceImpl implements ProductReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -64,23 +66,6 @@ public class ShareProductReadPlatformServiceImpl implements ProductReadPlatformS
     private final ProductToGLAccountMappingReadPlatformService accountMappingReadPlatformService;
     private final PaginationHelper shareProductDataPaginationHelper;
     private final DatabaseSpecificSQLGenerator sqlGenerator;
-
-    @Autowired
-    public ShareProductReadPlatformServiceImpl(final JdbcTemplate jdbcTemplate,
-            final CurrencyReadPlatformService currencyReadPlatformService, final ChargeReadPlatformService chargeReadPlatformService,
-            final ShareProductDropdownReadPlatformService shareProductDropdownReadPlatformService,
-            final AccountingDropdownReadPlatformService accountingDropdownReadPlatformService,
-            final ProductToGLAccountMappingReadPlatformService accountMappingReadPlatformService, DatabaseSpecificSQLGenerator sqlGenerator,
-            PaginationHelper paginationHelper) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.currencyReadPlatformService = currencyReadPlatformService;
-        this.chargeReadPlatformService = chargeReadPlatformService;
-        this.shareProductDropdownReadPlatformService = shareProductDropdownReadPlatformService;
-        this.accountingDropdownReadPlatformService = accountingDropdownReadPlatformService;
-        this.accountMappingReadPlatformService = accountMappingReadPlatformService;
-        this.shareProductDataPaginationHelper = paginationHelper;
-        this.sqlGenerator = sqlGenerator;
-    }
 
     @Override
     public Page<ProductData> retrieveAllProducts(Integer offSet, Integer limit) {
@@ -107,8 +92,8 @@ public class ShareProductReadPlatformServiceImpl implements ProductReadPlatformS
 
         try {
             final String sql1 = "select " + marketRowMapper.schema() + " where marketData.product_id = ?";
-            final Collection<ShareProductMarketPriceData> shareMarketCollection = this.jdbcTemplate.query(sql1, marketRowMapper,
-                    new Object[] { productId }); // NOSONAR
+            final Collection<ShareProductMarketPriceData> shareMarketCollection = this.jdbcTemplate.query(sql1, marketRowMapper, // NOSONAR
+                    new Object[] { productId });
             final Collection<ChargeData> charges = this.chargeReadPlatformService.retrieveShareProductCharges(productId);
             ShareProductRowMapper mapper = new ShareProductRowMapper(shareMarketCollection, charges);
             final String sql = "select " + mapper.schema() + " where shareproduct.id = ?";
@@ -194,7 +179,8 @@ public class ShareProductReadPlatformServiceImpl implements ProductReadPlatformS
             final Long id = rs.getLong("id");
             final Date fromDate = rs.getDate("from_date");
             final BigDecimal shareValue = rs.getBigDecimal("share_value");
-            return new ShareProductMarketPriceData(id, fromDate, shareValue);
+            final LocalDate fromLocalDate = fromDate != null ? fromDate.toLocalDate() : null;
+            return new ShareProductMarketPriceData(id, fromLocalDate, shareValue);
         }
 
         public String schema() {

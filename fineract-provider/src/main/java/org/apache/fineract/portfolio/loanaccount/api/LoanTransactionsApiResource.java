@@ -20,6 +20,7 @@ package org.apache.fineract.portfolio.loanaccount.api;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
@@ -57,6 +58,7 @@ import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.loanaccount.data.LoanRepaymentScheduleInstallmentData;
 import org.apache.fineract.portfolio.loanaccount.data.LoanTransactionData;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.service.LoanChargePaidByReadPlatformService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
@@ -109,8 +111,16 @@ public class LoanTransactionsApiResource {
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
     @Operation(summary = "Retrieve Loan Transaction Template", description = "This is a convenience resource. It can be useful when building maintenance user interface screens for client applications. The template data returned consists of any or all of:\n"
-            + "\n" + "Field Defaults\n" + "Allowed Value Lists\n\n" + "Example Request:\n" + "\n"
-            + "loans/1/transactions/template?command=repayment")
+            + "\n" + "Field Defaults\n" + "Allowed Value Lists\n\n" + "Example Requests:\n" + "\n"
+            + "loans/1/transactions/template?command=repayment" + "loans/1/transactions/template?command=merchantIssuedRefund"
+            + "loans/1/transactions/template?command=payoutRefund" + "loans/1/transactions/template?command=goodwillCredit" + "\n"
+            + "loans/1/transactions/template?command=waiveinterest" + "\n" + "loans/1/transactions/template?command=writeoff" + "\n"
+            + "loans/1/transactions/template?command=close-rescheduled" + "\n" + "loans/1/transactions/template?command=close" + "\n"
+            + "loans/1/transactions/template?command=disburse" + "\n" + "loans/1/transactions/template?command=disburseToSavings" + "\n"
+            + "loans/1/transactions/template?command=recoverypayment" + "\n" + "loans/1/transactions/template?command=prepayLoan" + "\n"
+            + "loans/1/transactions/template?command=refundbycash" + "\n" + "loans/1/transactions/template?command=refundbytransfer" + "\n"
+            + "loans/1/transactions/template?command=foreclosure" + "\n"
+            + "loans/1/transactions/template?command=creditBalanceRefund (returned 'amount' field will have the overpaid value)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = LoanTransactionsApiResourceSwagger.GetLoansLoanIdTransactionsTemplateResponse.class))) })
     public String retrieveTransactionTemplate(@PathParam("loanId") @Parameter(description = "loanId") final Long loanId,
@@ -124,6 +134,18 @@ public class LoanTransactionsApiResource {
         LoanTransactionData transactionData = null;
         if (is(commandParam, "repayment")) {
             transactionData = this.loanReadPlatformService.retrieveLoanTransactionTemplate(loanId);
+        } else if (is(commandParam, "merchantIssuedRefund")) {
+            LocalDate transactionDate = DateUtils.getBusinessLocalDate();
+            transactionData = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(LoanTransactionType.MERCHANT_ISSUED_REFUND,
+                    loanId, transactionDate);
+        } else if (is(commandParam, "payoutRefund")) {
+            LocalDate transactionDate = DateUtils.getBusinessLocalDate();
+            transactionData = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(LoanTransactionType.PAYOUT_REFUND, loanId,
+                    transactionDate);
+        } else if (is(commandParam, "goodwillCredit")) {
+            LocalDate transactionDate = DateUtils.getBusinessLocalDate();
+            transactionData = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(LoanTransactionType.GOODWILL_CREDIT, loanId,
+                    transactionDate);
         } else if (is(commandParam, "waiveinterest")) {
             transactionData = this.loanReadPlatformService.retrieveWaiveInterestDetails(loanId);
         } else if (is(commandParam, "writeoff")) {
@@ -145,12 +167,12 @@ public class LoanTransactionsApiResource {
         } else if (is(commandParam, "prepayLoan")) {
             LocalDate transactionDate = null;
             if (transactionDateParam == null) {
-                transactionDate = DateUtils.getLocalDateOfTenant();
+                transactionDate = DateUtils.getBusinessLocalDate();
             } else {
-                transactionDate = LocalDate.ofInstant(transactionDateParam.getDate("transactionDate", dateFormat, locale).toInstant(),
-                        DateUtils.getDateTimeZoneOfTenant());
+                transactionDate = transactionDateParam.getDate("transactionDate", dateFormat, locale);
             }
-            transactionData = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(loanId, transactionDate);
+            transactionData = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(LoanTransactionType.REPAYMENT, loanId,
+                    transactionDate);
         } else if (is(commandParam, "refundbycash")) {
             transactionData = this.loanReadPlatformService.retrieveRefundByCashTemplate(loanId);
         } else if (is(commandParam, "refundbytransfer")) {
@@ -158,12 +180,13 @@ public class LoanTransactionsApiResource {
         } else if (is(commandParam, "foreclosure")) {
             LocalDate transactionDate = null;
             if (transactionDateParam == null) {
-                transactionDate = DateUtils.getLocalDateOfTenant();
+                transactionDate = DateUtils.getBusinessLocalDate();
             } else {
-                transactionDate = LocalDate.ofInstant(transactionDateParam.getDate("transactionDate", dateFormat, locale).toInstant(),
-                        DateUtils.getDateTimeZoneOfTenant());
+                transactionDate = transactionDateParam.getDate("transactionDate", dateFormat, locale);
             }
             transactionData = this.loanReadPlatformService.retrieveLoanForeclosureTemplate(loanId, transactionDate);
+        } else if (is(commandParam, "creditBalanceRefund")) {
+            transactionData = this.loanReadPlatformService.retrieveCreditBalanceRefundTemplate(loanId);
         } else {
             throw new UnrecognizedQueryParamException("command", commandParam);
         }
@@ -182,6 +205,7 @@ public class LoanTransactionsApiResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = LoanTransactionsApiResourceSwagger.GetLoansLoanIdTransactionsTransactionIdResponse.class))) })
     public String retrieveTransaction(@PathParam("loanId") @Parameter(description = "loanId") final Long loanId,
             @PathParam("transactionId") @Parameter(description = "transactionId") final Long transactionId,
+            @QueryParam("fields") @Parameter(in = ParameterIn.QUERY, name = "fields", description = "Optional Loan Transaction attribute list to be in the response", required = false, example = "id,date,amount") final String fields,
             @Context final UriInfo uriInfo) {
 
         this.context.authenticatedUser().validateHasReadPermission(this.resourceNameForPermissions);
@@ -200,8 +224,18 @@ public class LoanTransactionsApiResource {
     @POST
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Make a Repayment | Make a Refund of an Active Loan by Cash | Foreclosure of an Active Loan | Waive Interest | Write-off Loan | Make Recovery Payment | Undo Loan Write-off Transaction", description = "Make Recovery Payment:\n\n"
-            + "This API allows collecting recovery payments for written-off loans")
+    @Operation(summary = "Significant Loan Transactions", description = "This API covers the major loan transaction functionality\n\n"
+            + "Example Requests:\n" + "\n" + "loans/1/transactions?command=repayment" + " | Make a Repayment | \n"
+            + "loans/1/transactions?command=merchantIssuedRefund" + " | Merchant Issued Refund | \n"
+            + "loans/1/transactions?command=payoutRefund" + " | Payout Refund | \n" + "loans/1/transactions?command=goodwillCredit"
+            + " | Goodwil Credit | \n" + "loans/1/transactions?command=chargeRefund" + " | Charge Refund | \n"
+            + "loans/1/transactions?command=waiveinterest" + " | Waive Interest | \n" + "loans/1/transactions?command=writeoff"
+            + " | Write-off Loan | \n" + "loans/1/transactions?command=close-rescheduled" + " | Close Rescheduled Loan | \n"
+            + "loans/1/transactions?command=close" + " | Close Loan | \n" + "loans/1/transactions?command=undowriteoff"
+            + " | Undo Loan Write-off | \n" + "loans/1/transactions?command=recoverypayment" + " | Make Recovery Payment | \n"
+            + "loans/1/transactions?command=refundByCash" + " | Make a Refund of an Active Loan by Cash | \n"
+            + "loans/1/transactions?command=foreclosure" + " | Foreclosure of an Active Loan | \n"
+            + "loans/1/transactions?command=creditBalanceRefund" + " | Credit Balance Refund" + " |  \n")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = LoanTransactionsApiResourceSwagger.PostLoansLoanIdTransactionsRequest.class)))
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = LoanTransactionsApiResourceSwagger.PostLoansLoanIdTransactionsResponse.class))) })
@@ -214,6 +248,18 @@ public class LoanTransactionsApiResource {
         CommandProcessingResult result = null;
         if (is(commandParam, "repayment")) {
             final CommandWrapper commandRequest = builder.loanRepaymentTransaction(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        } else if (is(commandParam, "merchantIssuedRefund")) {
+            final CommandWrapper commandRequest = builder.loanMerchantIssuedRefundTransaction(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        } else if (is(commandParam, "payoutRefund")) {
+            final CommandWrapper commandRequest = builder.loanPayoutRefundTransaction(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        } else if (is(commandParam, "goodwillCredit")) {
+            final CommandWrapper commandRequest = builder.loanGoodwillCreditTransaction(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        } else if (is(commandParam, "chargeRefund")) {
+            final CommandWrapper commandRequest = builder.refundLoanCharge(loanId).build();
             result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
         } else if (is(commandParam, "waiveinterest")) {
             final CommandWrapper commandRequest = builder.waiveInterestPortionTransaction(loanId).build();
@@ -238,6 +284,9 @@ public class LoanTransactionsApiResource {
             result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
         } else if (is(commandParam, "foreclosure")) {
             final CommandWrapper commandRequest = builder.loanForeclosure(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        } else if (is(commandParam, "creditBalanceRefund")) {
+            final CommandWrapper commandRequest = builder.creditBalanceRefund(loanId).build();
             result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
         }
 

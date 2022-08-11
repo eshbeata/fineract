@@ -18,24 +18,24 @@
  */
 package org.apache.fineract.infrastructure.dataqueries.service;
 
+import static java.lang.String.format;
+
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoField;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import javax.sql.DataSource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.exception.PlatformDataIntegrityException;
 import org.apache.fineract.infrastructure.core.service.RoutingDataSource;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseIndependentQueryService;
-import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
-import org.apache.fineract.infrastructure.core.service.database.DatabaseTypeResolver;
 import org.apache.fineract.infrastructure.dataqueries.data.GenericResultsetData;
 import org.apache.fineract.infrastructure.dataqueries.data.ResultsetColumnHeaderData;
 import org.apache.fineract.infrastructure.dataqueries.data.ResultsetColumnValueData;
 import org.apache.fineract.infrastructure.dataqueries.data.ResultsetRowData;
 import org.apache.fineract.infrastructure.dataqueries.exception.DatatableNotFoundException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -44,22 +44,17 @@ import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class GenericDataServiceImpl implements GenericDataService {
 
     private final JdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
-    private final DatabaseSpecificSQLGenerator sqlGenerator;
-    private final DatabaseTypeResolver databaseTypeResolver;
     private final DatabaseIndependentQueryService databaseIndependentQueryService;
-    private static final Logger LOG = LoggerFactory.getLogger(GenericDataServiceImpl.class);
 
     @Autowired
     public GenericDataServiceImpl(final RoutingDataSource dataSource, final JdbcTemplate jdbcTemplate,
-            DatabaseSpecificSQLGenerator sqlGenerator, DatabaseTypeResolver databaseTypeResolver,
             DatabaseIndependentQueryService databaseIndependentQueryService) {
         this.dataSource = dataSource;
-        this.sqlGenerator = sqlGenerator;
-        this.databaseTypeResolver = databaseTypeResolver;
         this.databaseIndependentQueryService = databaseIndependentQueryService;
         this.jdbcTemplate = new JdbcTemplate(this.dataSource);
     }
@@ -84,7 +79,7 @@ public class GenericDataServiceImpl implements GenericDataService {
             }
 
             while (rs.next()) {
-                final List<String> columnValues = new ArrayList<>();
+                final List<Object> columnValues = new ArrayList<>();
                 for (int i = 0; i < rsmd.getColumnCount(); i++) {
                     final String columnName = rsmd.getColumnName(i + 1);
                     final String columnValue = rs.getString(columnName);
@@ -97,6 +92,7 @@ public class GenericDataServiceImpl implements GenericDataService {
 
             return new GenericResultsetData(columnHeaders, resultsetDataRows);
         } catch (DataAccessException e) {
+            log.error("Reporting error: {}", e.getMessage());
             throw new PlatformDataIntegrityException("error.msg.report.unknown.data.integrity.issue", e.getClass().getName(), e);
         }
     }
@@ -140,12 +136,12 @@ public class GenericDataServiceImpl implements GenericDataService {
         final List<ResultsetColumnHeaderData> columnHeaders = grs.getColumnHeaders();
 
         final List<ResultsetRowData> data = grs.getData();
-        List<String> row;
+        List<Object> row;
         Integer rSize;
         final String doubleQuote = "\"";
         final String slashDoubleQuote = "\\\"";
         String currColType;
-        String currVal;
+        Object currVal;
 
         for (int i = 0; i < data.size(); i++) {
             writer.append("\n{");
@@ -166,22 +162,24 @@ public class GenericDataServiceImpl implements GenericDataService {
                 if (currColType == null && colType.equalsIgnoreCase("DATE")) {
                     currColType = "DATE";
                 }
+                if (currColType == null && colType.equalsIgnoreCase("DATETIME")) {
+                    currColType = "DATETIME";
+                }
                 currVal = row.get(j);
                 if (currVal != null && currColType != null) {
                     if (currColType.equals("DECIMAL") || currColType.equals("INTEGER")) {
                         writer.append(currVal);
                     } else {
                         if (currColType.equals("DATE")) {
-                            final LocalDate localDate = LocalDate.parse(currVal);
-                            writer.append(
-                                    "[" + localDate.getYear() + ", " + localDate.getMonthValue() + ", " + localDate.getDayOfMonth() + "]");
+                            final LocalDate localDate = new java.sql.Date(((Date) currVal).getTime()).toLocalDate();
+                            writer.append(format("[%d,%d,%d]", localDate.getYear(), localDate.getMonthValue(), localDate.getDayOfMonth()));
                         } else if (currColType.equals("DATETIME")) {
-                            final LocalDateTime localDateTime = LocalDateTime.parse(currVal);
-                            writer.append("[" + localDateTime.getYear() + ", " + localDateTime.getMonthValue() + ", "
-                                    + localDateTime.getDayOfMonth() + " " + localDateTime.getHour() + ", " + localDateTime.getMinute()
-                                    + ", " + localDateTime.getSecond() + ", " + localDateTime.get(ChronoField.MILLI_OF_SECOND) + "]");
+                            final LocalDateTime ldt = currVal instanceof Timestamp ? ((Timestamp) currVal).toLocalDateTime()
+                                    : (LocalDateTime) currVal;
+                            writer.append(format("[%d,%d,%d,%d,%d,%d,%d]", ldt.getYear(), ldt.getMonthValue(), ldt.getDayOfMonth(),
+                                    ldt.getHour(), ldt.getMinute(), ldt.getSecond(), ldt.getNano()));
                         } else {
-                            writer.append(doubleQuote + replace(currVal, doubleQuote, slashDoubleQuote) + doubleQuote);
+                            writer.append(doubleQuote + replace((String) currVal, doubleQuote, slashDoubleQuote) + doubleQuote);
                         }
                     }
                 } else {
@@ -206,9 +204,6 @@ public class GenericDataServiceImpl implements GenericDataService {
 
     @Override
     public List<ResultsetColumnHeaderData> fillResultsetColumnHeaders(final String datatable) {
-
-        LOG.debug("::3 Was inside the fill ResultSetColumnHeader");
-
         final SqlRowSet columnDefinitions = getDatatableMetaData(datatable);
 
         final List<ResultsetColumnHeaderData> columnHeaders = new ArrayList<>();
@@ -226,38 +221,16 @@ public class GenericDataServiceImpl implements GenericDataService {
 
             List<ResultsetColumnValueData> columnValues = new ArrayList<>();
             String codeName = null;
-            if ("varchar".equalsIgnoreCase(columnType)) {
-
-                final int codePosition = columnName.indexOf("_cv");
-                if (codePosition > 0) {
-                    codeName = columnName.substring(0, codePosition);
-
-                    columnValues = retreiveColumnValues(codeName);
-                }
-
-            } else if ("int".equalsIgnoreCase(columnType)) {
-
-                final int codePosition = columnName.indexOf("_cd");
+            final int codePosition = columnName.indexOf("_cd");
+            if ("varchar".equalsIgnoreCase(columnType) || "int".equalsIgnoreCase(columnType) || "integer".equalsIgnoreCase(columnType)) {
                 if (codePosition > 0) {
                     codeName = columnName.substring(0, codePosition);
                     columnValues = retreiveColumnValues(codeName);
                 }
             }
-            if (codeName == null) {
-                final SqlRowSet rsValues = getDatatableCodeData(datatable, columnName);
-                Integer codeId = null;
-                while (rsValues.next()) {
-                    codeId = rsValues.getInt("id");
-                    codeName = rsValues.getString("code_name");
-                }
-                columnValues = retreiveColumnValues(codeId);
 
-            }
-
-            final ResultsetColumnHeaderData rsch = ResultsetColumnHeaderData.detailed(columnName, columnType, columnLength, columnNullable,
-                    columnIsPrimaryKey, columnValues, codeName);
-
-            columnHeaders.add(rsch);
+            columnHeaders.add(ResultsetColumnHeaderData.detailed(columnName, columnType, columnLength, columnNullable, columnIsPrimaryKey,
+                    columnValues, codeName));
         }
 
         return columnHeaders;
@@ -286,23 +259,6 @@ public class GenericDataServiceImpl implements GenericDataService {
         return columnValues;
     }
 
-    private List<ResultsetColumnValueData> retreiveColumnValues(final Integer codeId) {
-
-        final List<ResultsetColumnValueData> columnValues = new ArrayList<>();
-        if (codeId != null) {
-            final String sql = "select v.id, v.code_value from m_code_value v where v.code_id = ? order by v.order_position, v.id";
-            final SqlRowSet rsValues = this.jdbcTemplate.queryForRowSet(sql, new Object[] { codeId }); // NOSONAR
-            rsValues.beforeFirst();
-            while (rsValues.next()) {
-                final Integer id = rsValues.getInt("id");
-                final String codeValue = rsValues.getString("code_value");
-                columnValues.add(new ResultsetColumnValueData(id, codeValue));
-            }
-        }
-
-        return columnValues;
-    }
-
     @SuppressWarnings("AvoidHidingCauseException")
     private SqlRowSet getDatatableMetaData(final String datatable) {
         try {
@@ -310,13 +266,5 @@ public class GenericDataServiceImpl implements GenericDataService {
         } catch (IllegalArgumentException e) {
             throw new DatatableNotFoundException(datatable);
         }
-    }
-
-    private SqlRowSet getDatatableCodeData(final String datatable, final String columnName) {
-        final String dataTableColumnName = datatable.toLowerCase().replaceAll("\\s", "_") + "_" + columnName + "'";
-        final String sql = "select mc.id,mc.code_name from m_code mc join x_table_column_code_mappings xcc on xcc.code_id = mc.id where xcc.column_alias_name= ?";
-        final SqlRowSet rsValues = this.jdbcTemplate.queryForRowSet(sql, new Object[] { dataTableColumnName }); // NOSONAR
-
-        return rsValues;
     }
 }

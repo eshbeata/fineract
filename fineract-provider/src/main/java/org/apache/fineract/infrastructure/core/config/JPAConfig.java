@@ -20,23 +20,22 @@
 package org.apache.fineract.infrastructure.core.config;
 
 import java.util.Map;
+import org.apache.fineract.infrastructure.core.auditing.JpaAuditingHandlerRegistrar;
 import org.apache.fineract.infrastructure.core.domain.AuditorAwareImpl;
 import org.apache.fineract.infrastructure.core.persistence.DatabaseSelectingPersistenceUnitPostProcessor;
-import org.apache.fineract.infrastructure.core.persistence.ExtendedJpaTransactionManager;
 import org.apache.fineract.infrastructure.core.service.RoutingDataSource;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseTypeResolver;
-import org.apache.fineract.useradministration.domain.AppUser;
 import org.eclipse.persistence.config.PersistenceUnitProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.orm.jpa.EntityManagerFactoryBuilderCustomizer;
 import org.springframework.boot.autoconfigure.orm.jpa.JpaBaseConfiguration;
 import org.springframework.boot.autoconfigure.orm.jpa.JpaProperties;
-import org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizers;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
@@ -54,6 +53,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @EnableJpaAuditing
 @EnableJpaRepositories(basePackages = "org.apache.fineract.**.domain")
 @EnableConfigurationProperties(JpaProperties.class)
+@Import(JpaAuditingHandlerRegistrar.class)
 public class JPAConfig extends JpaBaseConfiguration {
 
     private final DatabaseTypeResolver databaseTypeResolver;
@@ -96,16 +96,8 @@ public class JPAConfig extends JpaBaseConfiguration {
     }
 
     @Bean
-    public AuditorAware<AppUser> auditorAware() {
+    public AuditorAware<Long> auditorAware() {
         return new AuditorAwareImpl();
-    }
-
-    @Override
-    @Bean
-    public PlatformTransactionManager transactionManager(ObjectProvider<TransactionManagerCustomizers> transactionManagerCustomizers) {
-        ExtendedJpaTransactionManager transactionManager = new ExtendedJpaTransactionManager();
-        transactionManagerCustomizers.ifAvailable((customizers) -> customizers.customize(transactionManager));
-        return transactionManager;
     }
 
     @Bean

@@ -51,6 +51,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProductToGLAccountMappingHelper {
 
+    protected static final List<GLAccountType> ASSET_LIABILITY_TYPES = List.of(GLAccountType.ASSET, GLAccountType.LIABILITY);
+
     protected final GLAccountRepository accountRepository;
     protected final ProductToGLAccountMappingRepository accountMappingRepository;
     protected final FromJsonHelper fromApiJsonHelper;
@@ -61,11 +63,13 @@ public class ProductToGLAccountMappingHelper {
     public void saveProductToAccountMapping(final JsonElement element, final String paramName, final Long productId,
             final int placeHolderTypeId, final GLAccountType expectedAccountType, final PortfolioProductType portfolioProductType) {
         final Long accountId = this.fromApiJsonHelper.extractLongNamed(paramName, element);
-        final GLAccount glAccount = getAccountByIdAndType(paramName, expectedAccountType, accountId);
+        if (accountId != null) { // optional entries may be null
+            final GLAccount glAccount = getAccountByIdAndType(paramName, expectedAccountType, accountId);
 
-        final ProductToGLAccountMapping accountMapping = new ProductToGLAccountMapping(glAccount, productId,
-                portfolioProductType.getValue(), placeHolderTypeId);
-        this.accountMappingRepository.saveAndFlush(accountMapping);
+            final ProductToGLAccountMapping accountMapping = new ProductToGLAccountMapping(glAccount, productId,
+                    portfolioProductType.getValue(), placeHolderTypeId);
+            this.accountMappingRepository.saveAndFlush(accountMapping);
+        }
     }
 
     public void mergeProductToAccountMappingChanges(final JsonElement element, final String paramName, final Long productId,
@@ -78,13 +82,20 @@ public class ProductToGLAccountMappingHelper {
             final ProductToGLAccountMapping accountMapping = this.accountMappingRepository.findCoreProductToFinAccountMapping(productId,
                     portfolioProductType.getValue(), accountTypeId);
             if (accountMapping == null) {
-                throw new ProductToGLAccountMappingNotFoundException(portfolioProductType, productId, accountTypeName);
-            }
-            if (!accountMapping.getGlAccount().getId().equals(accountId)) {
-                final GLAccount glAccount = getAccountByIdAndType(paramName, expectedAccountType, accountId);
-                changes.put(paramName, accountId);
-                accountMapping.setGlAccount(glAccount);
-                this.accountMappingRepository.saveAndFlush(accountMapping);
+                ArrayList<String> optionalProductToGLAccountMappingEntries = new ArrayList<String>();
+                optionalProductToGLAccountMappingEntries.add("goodwillCreditAccountId");
+                if (optionalProductToGLAccountMappingEntries.contains(paramName)) {
+                    saveProductToAccountMapping(element, paramName, productId, accountTypeId, expectedAccountType, portfolioProductType);
+                } else {
+                    throw new ProductToGLAccountMappingNotFoundException(portfolioProductType, productId, accountTypeName);
+                }
+            } else {
+                if (!accountMapping.getGlAccount().getId().equals(accountId)) {
+                    final GLAccount glAccount = getAccountByIdAndType(paramName, expectedAccountType, accountId);
+                    changes.put(paramName, accountId);
+                    accountMapping.setGlAccount(glAccount);
+                    this.accountMappingRepository.saveAndFlush(accountMapping);
+                }
             }
         }
     }

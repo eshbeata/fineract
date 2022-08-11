@@ -444,6 +444,41 @@ public final class LoanEventApiJsonValidator {
         throwExceptionIfValidationWarningsExist(dataValidationErrors);
     }
 
+    public void validateLoanChargeRefundTransaction(final String json) {
+
+        if (StringUtils.isBlank(json)) {
+            throw new InvalidJsonException();
+        }
+        final String loanChargeIdParam = "loanChargeId";
+        final String installmentNumberParam = "installmentNumber";
+        final String dueDateParam = "dueDate";
+        Set<String> transactionParameters = new HashSet<>(
+                Arrays.asList(loanChargeIdParam, dueDateParam, "locale", "dateFormat", installmentNumberParam, //
+                        // remainder below relate to payment part of refund and not validated here
+                        "transactionAmount", "externalId", "note", "locale", "dateFormat", "paymentTypeId", "accountNumber", "checkNumber",
+                        "routingCode", "receiptNumber", "bankNumber"));
+
+        final Type typeOfMap = new TypeToken<Map<String, Object>>() {}.getType();
+        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, transactionParameters);
+
+        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
+        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
+                .resource("loan.charge.refund.transaction");
+
+        JsonElement element = this.fromApiJsonHelper.parse(json);
+
+        final Long chargeId = this.fromApiJsonHelper.extractLongNamed(loanChargeIdParam, element);
+        baseDataValidator.reset().parameter(loanChargeIdParam).value(chargeId).notNull().integerGreaterThanZero();
+
+        final Integer installmentNumber = this.fromApiJsonHelper.extractIntegerWithLocaleNamed(installmentNumberParam, element);
+        baseDataValidator.reset().parameter(installmentNumberParam).value(installmentNumber).ignoreIfNull().integerGreaterThanZero();
+
+        final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
+        baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).ignoreIfNull().positiveAmount();
+
+        throwExceptionIfValidationWarningsExist(dataValidationErrors);
+    }
+
     public void validateInstallmentChargeTransaction(final String json) {
 
         if (StringUtils.isBlank(json)) {
@@ -528,6 +563,9 @@ public final class LoanEventApiJsonValidator {
 
         final String note = this.fromApiJsonHelper.extractStringNamed("note", element);
         baseDataValidator.reset().parameter("note").value(note).notExceedingLengthOf(1000);
+
+        final String externalId = this.fromApiJsonHelper.extractStringNamed("externalId", element);
+        baseDataValidator.reset().parameter("externalId").value(externalId).notExceedingLengthOf(100);
 
         validatePaymentDetails(baseDataValidator, element);
         throwExceptionIfValidationWarningsExist(dataValidationErrors);

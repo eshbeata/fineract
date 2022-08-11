@@ -22,14 +22,13 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
+import org.apache.fineract.infrastructure.core.exception.PlatformServiceUnavailableException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.organisation.holiday.domain.Holiday;
 import org.apache.fineract.organisation.holiday.domain.HolidayRepository;
@@ -57,6 +56,7 @@ import org.apache.fineract.portfolio.loanaccount.data.HolidayDetailDTO;
 import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanDisbursementDetails;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleGeneratorFactory;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -192,8 +192,7 @@ public class LoanUtilService {
     private HolidayDetailDTO constructHolidayDTO(final Loan loan) {
         final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
         final List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(loan.getOfficeId(),
-                Date.from(loan.getDisbursementDate().atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                HolidayStatusType.ACTIVE.getValue());
+                loan.getDisbursementDate(), HolidayStatusType.ACTIVE.getValue());
         final WorkingDays workingDays = this.workingDaysRepository.findOne();
         final boolean allowTransactionsOnHoliday = this.configurationDomainService.allowTransactionsOnHolidayEnabled();
         final boolean allowTransactionsOnNonWorkingDay = this.configurationDomainService.allowTransactionsOnNonWorkingDayEnabled();
@@ -317,17 +316,14 @@ public class LoanUtilService {
                 int i = 0;
                 do {
                     final JsonObject jsonObject = disbursementDataArray.get(i).getAsJsonObject();
-                    Date expectedDisbursementDate = null;
-                    Date actualDisbursementDate = null;
+                    LocalDate expectedDisbursementDate = null;
+                    LocalDate actualDisbursementDate = null;
                     BigDecimal principal = null;
                     BigDecimal netDisbursalAmount = null;
 
                     if (jsonObject.has(LoanApiConstants.disbursementDateParameterName)) {
-                        LocalDate date = this.fromApiJsonHelper.extractLocalDateNamed(LoanApiConstants.disbursementDateParameterName,
-                                jsonObject, dateFormat, locale);
-                        if (date != null) {
-                            expectedDisbursementDate = Date.from(date.atStartOfDay(ZoneId.systemDefault()).toInstant());
-                        }
+                        expectedDisbursementDate = this.fromApiJsonHelper
+                                .extractLocalDateNamed(LoanApiConstants.disbursementDateParameterName, jsonObject, dateFormat, locale);
                     }
                     if (jsonObject.has(LoanApiConstants.disbursementPrincipalParameterName)
                             && jsonObject.get(LoanApiConstants.disbursementPrincipalParameterName).isJsonPrimitive()
@@ -349,6 +345,14 @@ public class LoanUtilService {
             }
         }
         return disbursementDatas;
+    }
+
+    public void validateRepaymentTransactionType(LoanTransactionType repaymentTransactionType) {
+        if (!repaymentTransactionType.isRepaymentType()) {
+            throw new PlatformServiceUnavailableException("error.msg.repaymentTransactionType.provided.not.a.repayment.type",
+                    "Loan :" + repaymentTransactionType.getCode() + " Repayment Transaction Type provided is not a Repayment Type",
+                    repaymentTransactionType.getCode());
+        }
     }
 
 }

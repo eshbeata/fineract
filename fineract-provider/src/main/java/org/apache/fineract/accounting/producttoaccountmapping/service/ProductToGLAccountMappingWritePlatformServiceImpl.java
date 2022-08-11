@@ -62,9 +62,10 @@ public class ProductToGLAccountMappingWritePlatformServiceImpl implements Produc
             case NONE:
             break;
             case CASH_BASED:
-                // asset
-                this.loanProductToGLAccountMappingHelper.saveLoanToAssetAccountMapping(element,
+                // asset or liability
+                this.loanProductToGLAccountMappingHelper.saveLoanToAssetOrLiabilityAccountMapping(element,
                         LoanProductAccountingParams.FUND_SOURCE.getValue(), loanProductId, CashAccountsForLoan.FUND_SOURCE.getValue());
+                // asset
                 this.loanProductToGLAccountMappingHelper.saveLoanToAssetAccountMapping(element,
                         LoanProductAccountingParams.LOAN_PORTFOLIO.getValue(), loanProductId,
                         CashAccountsForLoan.LOAN_PORTFOLIO.getValue());
@@ -90,6 +91,9 @@ public class ProductToGLAccountMappingWritePlatformServiceImpl implements Produc
                 this.loanProductToGLAccountMappingHelper.saveLoanToExpenseAccountMapping(element,
                         LoanProductAccountingParams.LOSSES_WRITTEN_OFF.getValue(), loanProductId,
                         CashAccountsForLoan.LOSSES_WRITTEN_OFF.getValue());
+                this.loanProductToGLAccountMappingHelper.saveLoanToExpenseAccountMapping(element,
+                        LoanProductAccountingParams.GOODWILL_CREDIT.getValue(), loanProductId,
+                        CashAccountsForLoan.GOODWILL_CREDIT.getValue());
 
                 // liabilities
                 this.loanProductToGLAccountMappingHelper.saveLoanToLiabilityAccountMapping(element,
@@ -102,9 +106,11 @@ public class ProductToGLAccountMappingWritePlatformServiceImpl implements Produc
             case ACCRUAL_UPFRONT:
                 // Fall Through
             case ACCRUAL_PERIODIC:
+                // asset or liability
+                this.loanProductToGLAccountMappingHelper.saveLoanToAssetOrLiabilityAccountMapping(element,
+                        LoanProductAccountingParams.FUND_SOURCE.getValue(), loanProductId, CashAccountsForLoan.FUND_SOURCE.getValue());
+
                 // assets (including receivables)
-                this.loanProductToGLAccountMappingHelper.saveLoanToAssetAccountMapping(element,
-                        LoanProductAccountingParams.FUND_SOURCE.getValue(), loanProductId, AccrualAccountsForLoan.FUND_SOURCE.getValue());
                 this.loanProductToGLAccountMappingHelper.saveLoanToAssetAccountMapping(element,
                         LoanProductAccountingParams.LOAN_PORTFOLIO.getValue(), loanProductId,
                         AccrualAccountsForLoan.LOAN_PORTFOLIO.getValue());
@@ -139,6 +145,9 @@ public class ProductToGLAccountMappingWritePlatformServiceImpl implements Produc
                 this.loanProductToGLAccountMappingHelper.saveLoanToExpenseAccountMapping(element,
                         LoanProductAccountingParams.LOSSES_WRITTEN_OFF.getValue(), loanProductId,
                         AccrualAccountsForLoan.LOSSES_WRITTEN_OFF.getValue());
+                this.loanProductToGLAccountMappingHelper.saveLoanToExpenseAccountMapping(element,
+                        LoanProductAccountingParams.GOODWILL_CREDIT.getValue(), loanProductId,
+                        AccrualAccountsForLoan.GOODWILL_CREDIT.getValue());
 
                 // liabilities
                 this.loanProductToGLAccountMappingHelper.saveLoanToLiabilityAccountMapping(element,

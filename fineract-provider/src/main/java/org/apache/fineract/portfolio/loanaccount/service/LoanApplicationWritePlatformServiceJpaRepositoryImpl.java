@@ -68,6 +68,11 @@ import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
 import org.apache.fineract.portfolio.account.domain.AccountAssociations;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanApprovedBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanCreatedBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanRejectedBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.domain.loan.LoanUndoApprovalBusinessEvent;
+import org.apache.fineract.portfolio.businessevent.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.calendar.domain.Calendar;
 import org.apache.fineract.portfolio.calendar.domain.CalendarEntityType;
 import org.apache.fineract.portfolio.calendar.domain.CalendarFrequencyType;
@@ -85,8 +90,6 @@ import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
 import org.apache.fineract.portfolio.collateralmanagement.domain.ClientCollateralManagement;
 import org.apache.fineract.portfolio.collateralmanagement.domain.ClientCollateralManagementRepository;
 import org.apache.fineract.portfolio.collateralmanagement.service.LoanCollateralAssembler;
-import org.apache.fineract.portfolio.common.BusinessEventNotificationConstants.BusinessEntity;
-import org.apache.fineract.portfolio.common.BusinessEventNotificationConstants.BusinessEvents;
 import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.common.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.creditscorecard.provider.ScorecardServiceProvider;
@@ -115,6 +118,7 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanStatus;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanSummaryWrapper;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTopupDetails;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.exception.LoanApplicationDateException;
 import org.apache.fineract.portfolio.loanaccount.exception.LoanApplicationNotInSubmittedAndPendingApprovalStateCannotBeDeleted;
 import org.apache.fineract.portfolio.loanaccount.exception.LoanApplicationNotInSubmittedAndPendingApprovalStateCannotBeModified;
@@ -288,7 +292,6 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
     public CommandProcessingResult submitApplication(final JsonCommand command) {
 
         try {
-            final AppUser currentUser = getAppUserIfPresent();
             boolean isMeetingMandatoryForJLGLoans = configurationDomainService.isMeetingMandatoryForJLGLoans();
             final Long productId = this.fromJsonHelper.extractLongNamed("productId", command.parsedJson());
             final LoanProduct loanProduct = this.loanProductRepository.findById(productId)
@@ -306,6 +309,16 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
             }
 
             this.fromApiJsonDeserializer.validateForCreate(command.json(), isMeetingMandatoryForJLGLoans, loanProduct);
+
+            // Validate If the externalId is already registered
+            final String externalId = this.fromJsonHelper.extractStringNamed("externalId", command.parsedJson());
+            if (StringUtils.isNotBlank(externalId)) {
+                final boolean existByExternalId = this.loanRepositoryWrapper.existLoanByExternalId(externalId);
+                if (existByExternalId) {
+                    throw new GeneralPlatformDomainRuleException("error.msg.loan.with.externalId.already.used",
+                            "Loan with externalId is already registered.");
+                }
+            }
 
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
             final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource("loan");
@@ -328,7 +341,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 throw new PlatformApiDataValidationException(dataValidationErrors);
             }
 
-            final Loan newLoanApplication = this.loanAssembler.assembleFrom(command, currentUser);
+            final Loan newLoanApplication = this.loanAssembler.assembleFrom(command);
 
             checkForProductMixRestrictions(newLoanApplication);
 
@@ -385,8 +398,8 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                                         + " should be after last transaction date of loan to be closed "
                                         + lastUserTransactionOnLoanToClose);
                     }
-                    BigDecimal loanOutstanding = this.loanReadPlatformService
-                            .retrieveLoanPrePaymentTemplate(loanIdToClose, newLoanApplication.getDisbursementDate()).getAmount();
+                    BigDecimal loanOutstanding = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(LoanTransactionType.REPAYMENT,
+                            loanIdToClose, newLoanApplication.getDisbursementDate()).getAmount();
                     final BigDecimal firstDisbursalAmount = newLoanApplication.getFirstDisbursalAmount();
                     if (loanOutstanding.compareTo(firstDisbursalAmount) > 0) {
                         throw new GeneralPlatformDomainRuleException("error.msg.loan.amount.less.than.outstanding.of.loan.to.be.closed",
@@ -605,8 +618,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                     StatusEnum.CREATE.getCode().longValue(), EntityTables.LOAN.getForeignKeyColumnNameOnDatatable(),
                     newLoanApplication.productId());
 
-            this.businessEventNotifierService.notifyBusinessEventWasExecuted(BusinessEvents.LOAN_CREATE,
-                    constructEntityMap(BusinessEntity.LOAN, newLoanApplication));
+            businessEventNotifierService.notifyPostBusinessEvent(new LoanCreatedBusinessEvent(newLoanApplication));
 
             return new CommandProcessingResultBuilder() //
                     .withCommandId(command.commandId()) //
@@ -974,8 +986,8 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                                             + " should be after last transaction date of loan to be closed "
                                             + lastUserTransactionOnLoanToClose);
                         }
-                        BigDecimal loanOutstanding = this.loanReadPlatformService
-                                .retrieveLoanPrePaymentTemplate(loanIdToClose, existingLoanApplication.getDisbursementDate()).getAmount();
+                        BigDecimal loanOutstanding = this.loanReadPlatformService.retrieveLoanPrePaymentTemplate(
+                                LoanTransactionType.REPAYMENT, loanIdToClose, existingLoanApplication.getDisbursementDate()).getAmount();
                         final BigDecimal firstDisbursalAmount = existingLoanApplication.getFirstDisbursalAmount();
                         if (loanOutstanding.compareTo(firstDisbursalAmount) > 0) {
                             throw new GeneralPlatformDomainRuleException("error.msg.loan.amount.less.than.outstanding.of.loan.to.be.closed",
@@ -1056,7 +1068,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 final JsonQuery query = JsonQuery.from(command.json(), parsedQuery, this.fromJsonHelper);
 
                 final LoanScheduleModel loanSchedule = this.calculationPlatformService.calculateLoanSchedule(query, false);
-                existingLoanApplication.updateLoanSchedule(loanSchedule, currentUser);
+                existingLoanApplication.updateLoanSchedule(loanSchedule);
                 existingLoanApplication.recalculateAllCharges();
             }
 
@@ -1355,7 +1367,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
     public CommandProcessingResult approveGLIMLoanAppication(final Long loanId, final JsonCommand command) {
 
         final Long parentLoanId = loanId;
-        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).get();
+        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).orElseThrow();
         JsonArray approvalFormData = command.arrayOfParameterNamed("approvalFormData");
 
         JsonObject jsonObject = null;
@@ -1455,7 +1467,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                     || changes.containsKey("expectedDisbursementDate")) {
                 LocalDate recalculateFrom = null;
                 ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, recalculateFrom);
-                loan.regenerateRepaymentSchedule(scheduleGeneratorDTO, currentUser);
+                loan.regenerateRepaymentSchedule(scheduleGeneratorDTO);
             }
 
             if (loan.isTopup() && loan.getClientId() != null) {
@@ -1474,7 +1486,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                                     + " should be after last transaction date of loan to be closed " + lastUserTransactionOnLoanToClose);
                 }
                 BigDecimal loanOutstanding = this.loanReadPlatformService
-                        .retrieveLoanPrePaymentTemplate(loanIdToClose, expectedDisbursementDate).getAmount();
+                        .retrieveLoanPrePaymentTemplate(LoanTransactionType.REPAYMENT, loanIdToClose, expectedDisbursementDate).getAmount();
                 final BigDecimal firstDisbursalAmount = loan.getFirstDisbursalAmount();
                 if (loanOutstanding.compareTo(firstDisbursalAmount) > 0) {
                     throw new GeneralPlatformDomainRuleException("error.msg.loan.amount.less.than.outstanding.of.loan.to.be.closed",
@@ -1493,8 +1505,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 this.noteRepository.save(note);
             }
 
-            this.businessEventNotifierService.notifyBusinessEventWasExecuted(BusinessEvents.LOAN_APPROVED,
-                    constructEntityMap(BusinessEntity.LOAN, loan));
+            businessEventNotifierService.notifyPostBusinessEvent(new LoanApprovedBusinessEvent(loan));
         }
 
         return new CommandProcessingResultBuilder() //
@@ -1515,7 +1526,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
         // GroupLoanIndividualMonitoringAccount
         // glimAccount=glimRepository.findOne(loanId);
         final Long parentLoanId = loanId;
-        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).get();
+        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).orElseThrow();
         List<Loan> childLoans = this.loanRepository.findByGlimId(loanId);
 
         CommandProcessingResult result = null;
@@ -1560,7 +1571,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                     || changes.containsKey(LoanApiConstants.disbursementPrincipalParameterName)) {
                 LocalDate recalculateFrom = null;
                 ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, recalculateFrom);
-                loan.regenerateRepaymentSchedule(scheduleGeneratorDTO, currentUser);
+                loan.regenerateRepaymentSchedule(scheduleGeneratorDTO);
             }
 
             loan.adjustNetDisbursalAmount(loan.getProposedPrincipal());
@@ -1572,8 +1583,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 final Note note = Note.loanNote(loan, noteText);
                 this.noteRepository.save(note);
             }
-            this.businessEventNotifierService.notifyBusinessEventWasExecuted(BusinessEvents.LOAN_UNDO_APPROVAL,
-                    constructEntityMap(BusinessEntity.LOAN, loan));
+            businessEventNotifierService.notifyPostBusinessEvent(new LoanUndoApprovalBusinessEvent(loan));
         }
 
         return new CommandProcessingResultBuilder() //
@@ -1594,7 +1604,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
         // GroupLoanIndividualMonitoringAccount
         // glimAccount=glimRepository.findOne(loanId);
         final Long parentLoanId = glimId;
-        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).get();
+        GroupLoanIndividualMonitoringAccount parentLoan = glimRepository.findById(parentLoanId).orElseThrow();
         List<Loan> childLoans = this.loanRepository.findByGlimId(glimId);
 
         CommandProcessingResult result = null;
@@ -1643,8 +1653,7 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 this.noteRepository.save(note);
             }
         }
-        this.businessEventNotifierService.notifyBusinessEventWasExecuted(BusinessEvents.LOAN_REJECTED,
-                constructEntityMap(BusinessEntity.LOAN, loan));
+        businessEventNotifierService.notifyPostBusinessEvent(new LoanRejectedBusinessEvent(loan));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withEntityId(loan.getId()) //
@@ -1777,12 +1786,6 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
             user = this.context.getAuthenticatedUserIfPresent();
         }
         return user;
-    }
-
-    private Map<BusinessEntity, Object> constructEntityMap(final BusinessEntity entityEvent, Object entity) {
-        Map<BusinessEntity, Object> map = new HashMap<>(1);
-        map.put(entityEvent, entity);
-        return map;
     }
 
     private void officeSpecificLoanProductValidation(final Long productId, final Long officeId) {

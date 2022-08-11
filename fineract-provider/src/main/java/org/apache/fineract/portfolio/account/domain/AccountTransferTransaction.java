@@ -20,8 +20,6 @@ package org.apache.fineract.portfolio.account.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.Date;
 import javax.persistence.Column;
 import javax.persistence.Embedded;
 import javax.persistence.Entity;
@@ -29,8 +27,6 @@ import javax.persistence.FetchType;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
@@ -64,9 +60,8 @@ public class AccountTransferTransaction extends AbstractPersistableCustom {
     @Column(name = "is_reversed", nullable = false)
     private boolean reversed = false;
 
-    @Temporal(TemporalType.DATE)
     @Column(name = "transaction_date")
-    private Date date;
+    private LocalDate date;
 
     @Embedded
     private MonetaryCurrency currency;
@@ -112,7 +107,7 @@ public class AccountTransferTransaction extends AbstractPersistableCustom {
         this.fromSavingsTransaction = withdrawal;
         this.toSavingsTransaction = deposit;
         this.toLoanTransaction = loanRepaymentTransaction;
-        this.date = Date.from(transactionDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        this.date = transactionDate;
         this.currency = transactionAmount.getCurrency();
         this.amount = transactionAmount.getAmountDefaultedToNullIfZero();
         this.description = description;

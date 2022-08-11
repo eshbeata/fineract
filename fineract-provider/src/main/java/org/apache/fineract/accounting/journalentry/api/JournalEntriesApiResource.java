@@ -28,8 +28,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import javax.ws.rs.Consumes;
@@ -79,10 +79,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class JournalEntriesApiResource {
 
-    private static final Set<String> RESPONSE_DATA_PARAMETERS = new HashSet<>(
-            Arrays.asList("id", "officeId", "officeName", "glAccountName", "glAccountId", "glAccountCode", "glAccountType",
-                    "transactionDate", "entryType", "amount", "transactionId", "manualEntry", "entityType", "entityId", "createdByUserId",
-                    "createdDate", "createdByUserName", "comments", "reversed", "referenceNumber", "currency", "transactionDetails"));
+    private static final Set<String> RESPONSE_DATA_PARAMETERS = new HashSet<>(Arrays.asList("id", "officeId", "officeName", "glAccountName",
+            "glAccountId", "glAccountCode", "glAccountType", "transactionDate", "entryType", "amount", "transactionId", "manualEntry",
+            "entityType", "entityId", "createdByUserId", "createdDate", "submittedOnDate", "createdByUserName", "comments", "reversed",
+            "referenceNumber", "currency", "transactionDetails"));
 
     private final String resourceNameForPermission = "JOURNALENTRY";
 
@@ -111,6 +111,8 @@ public class JournalEntriesApiResource {
             @QueryParam("manualEntriesOnly") @Parameter(description = "manualEntriesOnly") final Boolean onlyManualEntries,
             @QueryParam("fromDate") @Parameter(description = "fromDate") final DateParam fromDateParam,
             @QueryParam("toDate") @Parameter(description = "toDate") final DateParam toDateParam,
+            @QueryParam("submittedOnDateFrom") @Parameter(description = "submittedOnDateFrom") final DateParam submittedOnDateFromParam,
+            @QueryParam("submittedOnDateTo") @Parameter(description = "submittedOnDateTo") final DateParam submittedOnDateToParam,
             @QueryParam("transactionId") @Parameter(description = "transactionId") final String transactionId,
             @QueryParam("entityType") @Parameter(description = "entityType") final Integer entityType,
             @QueryParam("offset") @Parameter(description = "offset") final Integer offset,
@@ -126,13 +128,22 @@ public class JournalEntriesApiResource {
 
         this.context.authenticatedUser().validateHasReadPermission(this.resourceNameForPermission);
 
-        Date fromDate = null;
+        LocalDate fromDate = null;
         if (fromDateParam != null) {
             fromDate = fromDateParam.getDate("fromDate", dateFormat, locale);
         }
-        Date toDate = null;
+        LocalDate toDate = null;
         if (toDateParam != null) {
             toDate = toDateParam.getDate("toDate", dateFormat, locale);
+        }
+
+        LocalDate submittedOnDateFrom = null;
+        if (submittedOnDateFromParam != null) {
+            submittedOnDateFrom = submittedOnDateFromParam.getDate("submittedOnDateFrom", dateFormat, locale);
+        }
+        LocalDate submittedOnDateTo = null;
+        if (submittedOnDateToParam != null) {
+            submittedOnDateTo = submittedOnDateToParam.getDate("submittedOnDateTo", dateFormat, locale);
         }
 
         final SearchParameters searchParameters = SearchParameters.forJournalEntries(officeId, offset, limit, orderBy, sortOrder, loanId,
@@ -141,7 +152,8 @@ public class JournalEntriesApiResource {
                 runningBalance);
 
         final Page<JournalEntryData> glJournalEntries = this.journalEntryReadPlatformService.retrieveAll(searchParameters, glAccountId,
-                onlyManualEntries, fromDate, toDate, transactionId, entityType, associationParametersData);
+                onlyManualEntries, fromDate, toDate, submittedOnDateFrom, submittedOnDateTo, transactionId, entityType,
+                associationParametersData);
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
         return this.apiJsonSerializerService.serialize(settings, glJournalEntries, RESPONSE_DATA_PARAMETERS);
     }
@@ -234,8 +246,8 @@ public class JournalEntriesApiResource {
         this.context.authenticatedUser();
         String transactionId = "P" + entryId;
         SearchParameters params = SearchParameters.forPagination(offset, limit);
-        Page<JournalEntryData> entries = this.journalEntryReadPlatformService.retrieveAll(params, null, null, null, null, transactionId,
-                PortfolioProductType.PROVISIONING.getValue(), null);
+        Page<JournalEntryData> entries = this.journalEntryReadPlatformService.retrieveAll(params, null, null, null, null, null, null,
+                transactionId, PortfolioProductType.PROVISIONING.getValue(), null);
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
         return this.apiJsonSerializerService.serialize(settings, entries, RESPONSE_DATA_PARAMETERS);
     }

@@ -94,6 +94,10 @@ public class LoanProductTestBuilder {
     private Boolean multiDisburseLoan = false;
     private final String outstandingLoanBalance = "35000";
     private String maxTrancheCount = "3";
+    private Boolean disallowExpectedDisbursements = false;
+    private Boolean allowApprovedDisbursedAmountsOverApplied = false;
+    private String overAppliedCalculationType = null;
+    private Integer overAppliedNumber = null;
 
     private Boolean isInterestRecalculationEnabled = false;
     private String daysInYearType = "1";
@@ -125,6 +129,7 @@ public class LoanProductTestBuilder {
     private Integer recalculationRestFrequencyDayOfWeekType = null;
     private boolean syncExpectedWithDisbursementDate = false;
     private String fixedPrincipalPercentagePerInstallment;
+    private String installmentAmountInMultiplesOf;
 
     public String build(final String chargeId) {
         final HashMap<String, Object> map = new HashMap<>();
@@ -162,6 +167,18 @@ public class LoanProductTestBuilder {
         if (this.minimumDaysBetweenDisbursalAndFirstRepayment != null) {
             map.put("minimumDaysBetweenDisbursalAndFirstRepayment", this.minimumDaysBetweenDisbursalAndFirstRepayment);
         }
+        if (this.multiDisburseLoan) {
+            map.put("multiDisburseLoan", this.multiDisburseLoan);
+            map.put("maxTrancheCount", this.maxTrancheCount);
+            map.put("outstandingLoanBalance", this.outstandingLoanBalance);
+            map.put("disallowExpectedDisbursements", this.disallowExpectedDisbursements);
+            if (this.disallowExpectedDisbursements) {
+                map.put("allowApprovedDisbursedAmountsOverApplied", this.allowApprovedDisbursedAmountsOverApplied);
+                map.put("overAppliedCalculationType", this.overAppliedCalculationType);
+                map.put("overAppliedNumber", this.overAppliedNumber);
+            }
+        }
+
         if (multiDisburseLoan) {
             map.put("multiDisburseLoan", this.multiDisburseLoan);
             map.put("maxTrancheCount", this.maxTrancheCount);
@@ -214,7 +231,15 @@ public class LoanProductTestBuilder {
             map.put("maximumGap", maximumGap);
         }
         map.put("syncExpectedWithDisbursementDate", this.syncExpectedWithDisbursementDate);
+        if (installmentAmountInMultiplesOf != null) {
+            map.put("installmentAmountInMultiplesOf", this.installmentAmountInMultiplesOf);
+        }
         return new Gson().toJson(map);
+    }
+
+    public LoanProductTestBuilder withInstallmentAmountInMultiplesOf(String installmentAmountInMultiplesOf) {
+        this.installmentAmountInMultiplesOf = installmentAmountInMultiplesOf;
+        return this;
     }
 
     public LoanProductTestBuilder withMinPrincipal(final String minPrincipal) {
@@ -346,6 +371,21 @@ public class LoanProductTestBuilder {
         return this;
     }
 
+    public LoanProductTestBuilder withMultiDisburse() {
+        this.multiDisburseLoan = true;
+        return this;
+    }
+
+    public LoanProductTestBuilder withDisallowExpectectedDisbursements(boolean disallowExpectectedDisbursements) {
+        this.disallowExpectedDisbursements = disallowExpectectedDisbursements;
+        if (this.disallowExpectedDisbursements) {
+            this.allowApprovedDisbursedAmountsOverApplied = true;
+            this.overAppliedCalculationType = "percentage";
+            this.overAppliedNumber = 100;
+        }
+        return this;
+    }
+
     private Map<String, String> getAccountMappingForCashBased() {
         final Map<String, String> map = new HashMap<>();
         for (int i = 0; i < this.accountList.length; i++) {
@@ -365,6 +405,7 @@ public class LoanProductTestBuilder {
             if (this.accountList[i].getAccountType().equals(Account.AccountType.EXPENSE)) {
                 final String ID = this.accountList[i].getAccountID().toString();
                 map.put("writeOffAccountId", ID);
+                map.put("goodwillCreditAccountId", ID);
             }
             if (this.accountList[i].getAccountType().equals(Account.AccountType.LIABILITY)) {
                 final String ID = this.accountList[i].getAccountID().toString();
@@ -397,6 +438,7 @@ public class LoanProductTestBuilder {
             if (this.accountList[i].getAccountType().equals(Account.AccountType.EXPENSE)) {
                 final String ID = this.accountList[i].getAccountID().toString();
                 map.put("writeOffAccountId", ID);
+                map.put("goodwillCreditAccountId", ID);
             }
             if (this.accountList[i].getAccountType().equals(Account.AccountType.LIABILITY)) {
                 final String ID = this.accountList[i].getAccountID().toString();

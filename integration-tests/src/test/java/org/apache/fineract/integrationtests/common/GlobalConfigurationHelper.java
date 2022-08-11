@@ -23,26 +23,25 @@ import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
 import java.util.ArrayList;
 import java.util.HashMap;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.client.models.GlobalConfigurationPropertyData;
+import org.apache.fineract.client.util.JSON;
 import org.junit.jupiter.api.Assertions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @SuppressWarnings({ "unused", "rawtypes" })
+@Slf4j
+@RequiredArgsConstructor
 public class GlobalConfigurationHelper {
 
-    private static final Logger LOG = LoggerFactory.getLogger(GlobalConfigurationHelper.class);
+    private static final Gson GSON = new JSON().getGson();
     private final RequestSpecification requestSpec;
     private final ResponseSpecification responseSpec;
-
-    public GlobalConfigurationHelper(final RequestSpecification requestSpec, final ResponseSpecification responseSpec) {
-        this.requestSpec = requestSpec;
-        this.responseSpec = responseSpec;
-    }
 
     public static ArrayList<HashMap> getAllGlobalConfigurations(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec) {
         final String GET_ALL_GLOBAL_CONFIG_URL = "/fineract-provider/api/v1/configurations?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("------------------------ RETRIEVING ALL GLOBAL CONFIGURATIONS -------------------------");
+        log.info("------------------------ RETRIEVING ALL GLOBAL CONFIGURATIONS -------------------------");
         final HashMap<String, ArrayList<HashMap>> response = Utils.performServerGet(requestSpec, responseSpec, GET_ALL_GLOBAL_CONFIG_URL,
                 "");
         return response.get("globalConfiguration");
@@ -51,10 +50,20 @@ public class GlobalConfigurationHelper {
     public static HashMap getGlobalConfigurationById(final RequestSpecification requestSpec, final ResponseSpecification responseSpec,
             final String configId) {
         final String GET_GLOBAL_CONFIG_BY_ID_URL = "/fineract-provider/api/v1/configurations/" + configId + "?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("------------------------ RETRIEVING GLOBAL CONFIGURATION BY ID -------------------------");
+        log.info("------------------------ RETRIEVING GLOBAL CONFIGURATION BY ID -------------------------");
         return Utils.performServerGet(requestSpec, responseSpec, GET_GLOBAL_CONFIG_BY_ID_URL, "");
     }
 
+    public static GlobalConfigurationPropertyData getGlobalConfigurationByName(final RequestSpecification requestSpec,
+            final ResponseSpecification responseSpec, final String name) {
+        final String GET_GLOBAL_CONFIG_BY_NAME_URL = "/fineract-provider/api/v1/configurations/name/" + name + "?"
+                + Utils.TENANT_IDENTIFIER;
+        log.info("------------------------ RETRIEVING GLOBAL CONFIGURATION BY NAME -------------------------");
+        String response = Utils.performServerGet(requestSpec, responseSpec, GET_GLOBAL_CONFIG_BY_NAME_URL);
+        return GSON.fromJson(response, GlobalConfigurationPropertyData.class);
+    }
+
+    // TODO: This is quite a bad pattern and adds a lot of time to individual test executions
     public static void resetAllDefaultGlobalConfigurations(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec) {
 
@@ -90,8 +99,8 @@ public class GlobalConfigurationHelper {
         ArrayList<HashMap> actualGlobalConfigurations = getAllGlobalConfigurations(requestSpec, responseSpec);
 
         // There are currently 37 global configurations.
-        Assertions.assertEquals(38, expectedGlobalConfigurations.size());
-        Assertions.assertEquals(38, actualGlobalConfigurations.size());
+        Assertions.assertEquals(41, expectedGlobalConfigurations.size());
+        Assertions.assertEquals(41, actualGlobalConfigurations.size());
 
         for (int i = 0; i < expectedGlobalConfigurations.size(); i++) {
 
@@ -431,21 +440,60 @@ public class GlobalConfigurationHelper {
         isPrincipalCompoundingDisabled.put("trapDoor", false);
         defaults.add(isPrincipalCompoundingDisabled);
 
+        HashMap<String, Object> isBusinessDateEnabled = new HashMap<>();
+        isBusinessDateEnabled.put("id", 44);
+        isBusinessDateEnabled.put("name", "enable_business_date");
+        isBusinessDateEnabled.put("value", 0);
+        isBusinessDateEnabled.put("enabled", false);
+        isBusinessDateEnabled.put("trapDoor", false);
+        defaults.add(isBusinessDateEnabled);
+
+        HashMap<String, Object> isAutomaticCOBDateAdjustmentEnabled = new HashMap<>();
+        isAutomaticCOBDateAdjustmentEnabled.put("id", 45);
+        isAutomaticCOBDateAdjustmentEnabled.put("name", "enable_automatic_cob_date_adjustment");
+        isAutomaticCOBDateAdjustmentEnabled.put("value", 0);
+        isAutomaticCOBDateAdjustmentEnabled.put("enabled", true);
+        isAutomaticCOBDateAdjustmentEnabled.put("trapDoor", false);
+        defaults.add(isAutomaticCOBDateAdjustmentEnabled);
+
+        HashMap<String, Object> isReversalTransactionAllowed = new HashMap<>();
+        isReversalTransactionAllowed.put("id", 46);
+        isReversalTransactionAllowed.put("name", "enable-post-reversal-txns-for-reverse-transactions");
+        isReversalTransactionAllowed.put("value", 0);
+        isReversalTransactionAllowed.put("enabled", false);
+        isReversalTransactionAllowed.put("trapDoor", false);
+        defaults.add(isReversalTransactionAllowed);
+
         return defaults;
     }
 
     public static Integer updateValueForGlobalConfiguration(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final String configId, final String value) {
         final String GLOBAL_CONFIG_UPDATE_URL = "/fineract-provider/api/v1/configurations/" + configId + "?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("---------------------------------UPDATE VALUE FOR GLOBAL CONFIG---------------------------------------------");
+        log.info("---------------------------------UPDATE VALUE FOR GLOBAL CONFIG---------------------------------------------");
         return Utils.performServerPut(requestSpec, responseSpec, GLOBAL_CONFIG_UPDATE_URL, updateGlobalConfigUpdateValueAsJSON(value),
                 "resourceId");
     }
 
+    public static Integer updateValueForGlobalConfiguration(final RequestSpecification requestSpec,
+            final ResponseSpecification responseSpec, final String configId, final int value) {
+        return updateValueForGlobalConfiguration(requestSpec, responseSpec, configId, Integer.toString(value));
+    }
+
     public static Integer updateEnabledFlagForGlobalConfiguration(final RequestSpecification requestSpec,
-            final ResponseSpecification responseSpec, final String configId, final Boolean enabled) {
+            final ResponseSpecification responseSpec, final long configId, final boolean enabled) {
         final String GLOBAL_CONFIG_UPDATE_URL = "/fineract-provider/api/v1/configurations/" + configId + "?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("---------------------------------UPDATE GLOBAL CONFIG FOR ENABLED FLAG---------------------------------------------");
+        log.info("---------------------------------UPDATE GLOBAL CONFIG FOR ENABLED FLAG---------------------------------------------");
+        return Utils.performServerPut(requestSpec, responseSpec, GLOBAL_CONFIG_UPDATE_URL,
+                updateGlobalConfigUpdateEnabledFlagAsJSON(enabled), "resourceId");
+    }
+
+    // Deprecated because it's using configId as a String
+    @Deprecated
+    public static Integer updateEnabledFlagForGlobalConfiguration(final RequestSpecification requestSpec,
+            final ResponseSpecification responseSpec, final String configId, final boolean enabled) {
+        final String GLOBAL_CONFIG_UPDATE_URL = "/fineract-provider/api/v1/configurations/" + configId + "?" + Utils.TENANT_IDENTIFIER;
+        log.info("---------------------------------UPDATE GLOBAL CONFIG FOR ENABLED FLAG---------------------------------------------");
         return Utils.performServerPut(requestSpec, responseSpec, GLOBAL_CONFIG_UPDATE_URL,
                 updateGlobalConfigUpdateEnabledFlagAsJSON(enabled), "resourceId");
     }
@@ -453,7 +501,7 @@ public class GlobalConfigurationHelper {
     public static ArrayList getGlobalConfigurationIsCacheEnabled(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec) {
         final String GET_IS_CACHE_GLOBAL_CONFIG_URL = "/fineract-provider/api/v1/caches?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("------------------------ RETRIEVING IS CACHE ENABLED GLOBAL CONFIGURATION -------------------------");
+        log.info("------------------------ RETRIEVING IS CACHE ENABLED GLOBAL CONFIGURATION -------------------------");
         final ArrayList<HashMap> response = Utils.performServerGet(requestSpec, responseSpec, GET_IS_CACHE_GLOBAL_CONFIG_URL, "");
         return response;
     }
@@ -461,7 +509,7 @@ public class GlobalConfigurationHelper {
     public static HashMap updateIsCacheEnabledForGlobalConfiguration(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final String cacheType) {
         final String IS_CACHE_GLOBAL_CONFIG_UPDATE_URL = "/fineract-provider/api/v1/caches?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("------------------UPDATE GLOBAL CONFIG FOR IS CACHE ENABLED----------------------");
+        log.info("------------------UPDATE GLOBAL CONFIG FOR IS CACHE ENABLED----------------------");
         return Utils.performServerPut(requestSpec, responseSpec, IS_CACHE_GLOBAL_CONFIG_UPDATE_URL,
                 updateIsCacheEnabledGlobalConfigUpdateAsJSON(cacheType), "changes");
     }
@@ -470,7 +518,7 @@ public class GlobalConfigurationHelper {
             final ResponseSpecification responseSpec, final Integer configId, final String value, final String enabled,
             final String jsonAttributeToGetBack) {
         final String UPDATE_URL = "/fineract-provider/api/v1/configurations/" + configId + "?" + Utils.TENANT_IDENTIFIER;
-        LOG.info("------------------UPDATE GLOBAL CONFIG FOR FORCE PASSWORD RESET DAYS----------------------");
+        log.info("------------------UPDATE GLOBAL CONFIG FOR FORCE PASSWORD RESET DAYS----------------------");
         return Utils.performServerPut(requestSpec, responseSpec, UPDATE_URL, updatePasswordResetDaysGlobalConfigAsJSON(value, enabled),
                 jsonAttributeToGetBack);
     }
@@ -478,8 +526,8 @@ public class GlobalConfigurationHelper {
     public static String updateGlobalConfigUpdateValueAsJSON(final String value) {
         final HashMap<String, String> map = new HashMap<>();
         map.put("value", value);
-        LOG.info("map :  {}", map);
-        return new Gson().toJson(map);
+        log.info("map :  {}", map);
+        return GSON.toJson(map);
     }
 
     public static String updatePasswordResetDaysGlobalConfigAsJSON(final String value, final String enabled) {
@@ -488,22 +536,27 @@ public class GlobalConfigurationHelper {
             map.put("value", value);
         }
         map.put("enabled", enabled);
-        LOG.info("map :  {}", map);
+        log.info("map :  {}", map);
         return new Gson().toJson(map);
     }
 
     public static String updateGlobalConfigUpdateEnabledFlagAsJSON(final Boolean enabled) {
         final HashMap<String, Boolean> map = new HashMap<String, Boolean>();
         map.put("enabled", enabled);
-        LOG.info("map :  {}", map);
+        log.info("map :  {}", map);
         return new Gson().toJson(map);
     }
 
     public static String updateIsCacheEnabledGlobalConfigUpdateAsJSON(final String cacheType) {
         final HashMap<String, String> map = new HashMap<>();
         map.put("cacheType", cacheType);
-        LOG.info("map :  {}", map);
+        log.info("map :  {}", map);
         return new Gson().toJson(map);
     }
 
+    public static Integer updateIsBusinessDateEnabled(final RequestSpecification requestSpec, final ResponseSpecification responseSpec,
+            final boolean enabled) {
+        long configId = 44;
+        return updateEnabledFlagForGlobalConfiguration(requestSpec, responseSpec, configId, enabled);
+    }
 }

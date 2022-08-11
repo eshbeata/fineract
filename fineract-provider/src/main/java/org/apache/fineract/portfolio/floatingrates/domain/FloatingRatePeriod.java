@@ -20,30 +20,25 @@ package org.apache.fineract.portfolio.floatingrates.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZonedDateTime;
-import java.util.Date;
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.FetchType;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
-import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
-import org.apache.fineract.infrastructure.core.service.DateUtils;
+import org.apache.fineract.infrastructure.core.domain.AbstractAuditableWithUTCDateTimeCustom;
 import org.apache.fineract.portfolio.floatingrates.data.FloatingRateDTO;
 import org.apache.fineract.portfolio.floatingrates.data.FloatingRatePeriodData;
-import org.apache.fineract.useradministration.domain.AppUser;
 
 @Entity
 @Table(name = "m_floating_rates_periods")
-public class FloatingRatePeriod extends AbstractPersistableCustom {
+public class FloatingRatePeriod extends AbstractAuditableWithUTCDateTimeCustom {
 
     @ManyToOne
     @JoinColumn(name = "floating_rates_id", nullable = false)
     private FloatingRate floatingRate;
 
     @Column(name = "from_date", nullable = false)
-    private Date fromDate;
+    private LocalDate fromDate;
 
     @Column(name = "interest_rate", scale = 6, precision = 19, nullable = false)
     private BigDecimal interestRate;
@@ -54,45 +49,34 @@ public class FloatingRatePeriod extends AbstractPersistableCustom {
     @Column(name = "is_active", nullable = false)
     private boolean isActive;
 
-    @ManyToOne(optional = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "createdby_id", nullable = false)
-    private AppUser createdBy;
-
-    @ManyToOne(optional = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "lastmodifiedby_id", nullable = false)
-    private AppUser modifiedBy;
-
-    @Column(name = "created_date", nullable = false)
-    private Date createdOn;
-
-    @Column(name = "lastmodified_date", nullable = false)
-    private Date modifiedOn;
+    /*
+     * Deprecated since common Auditable fields were introduced. Columns and data left untouched to help migration.
+     *
+     * @Column(name = "created_date", nullable = false) private LocalDateTime createdOn;
+     *
+     * @Column(name = "lastmodified_date", nullable = false) private LocalDateTime modifiedOn;
+     */
 
     public FloatingRatePeriod() {
 
     }
 
-    public FloatingRatePeriod(Date fromDate, BigDecimal interestRate, boolean isDifferentialToBaseLendingRate, boolean isActive,
-            AppUser createdBy, AppUser modifiedBy, Date createdOn, Date modifiedOn) {
+    public FloatingRatePeriod(LocalDate fromDate, BigDecimal interestRate, boolean isDifferentialToBaseLendingRate, boolean isActive) {
         this.fromDate = fromDate;
         this.interestRate = interestRate;
         this.isDifferentialToBaseLendingRate = isDifferentialToBaseLendingRate;
         this.isActive = isActive;
-        this.createdBy = createdBy;
-        this.modifiedBy = modifiedBy;
-        this.createdOn = createdOn;
-        this.modifiedOn = modifiedOn;
     }
 
     public void updateFloatingRate(FloatingRate floatingRate) {
         this.floatingRate = floatingRate;
     }
 
-    public FloatingRate getFloatingRatesId() {
+    public FloatingRate getFloatingRate() {
         return this.floatingRate;
     }
 
-    public Date getFromDate() {
+    public LocalDate getFromDate() {
         return this.fromDate;
     }
 
@@ -108,36 +92,12 @@ public class FloatingRatePeriod extends AbstractPersistableCustom {
         return this.isActive;
     }
 
-    public AppUser getCreatedBy() {
-        return this.createdBy;
-    }
-
-    public AppUser getModifiedBy() {
-        return this.modifiedBy;
-    }
-
-    public Date getCreatedOn() {
-        return this.createdOn;
-    }
-
-    public Date getModifiedOn() {
-        return this.modifiedOn;
-    }
-
-    public void setModifiedBy(AppUser modifiedBy) {
-        this.modifiedBy = modifiedBy;
-    }
-
-    public void setModifiedOn(Date modifiedOn) {
-        this.modifiedOn = modifiedOn;
-    }
-
-    public void setActive(boolean b) {
-        this.isActive = b;
+    public void setActive(boolean isActive) {
+        this.isActive = isActive;
     }
 
     public LocalDate fetchFromDate() {
-        return LocalDate.ofInstant(this.fromDate.toInstant(), DateUtils.getDateTimeZoneOfTenant());
+        return fromDate;
     }
 
     public FloatingRatePeriodData toData(final FloatingRateDTO floatingRateDTO) {
@@ -147,15 +107,8 @@ public class FloatingRatePeriod extends AbstractPersistableCustom {
             interest = interest.add(floatingRateDTO.fetchBaseRate(fetchFromDate()));
         }
 
-        final LocalDate fromDate = ZonedDateTime.ofInstant(getFromDate().toInstant(), DateUtils.getDateTimeZoneOfTenant()).toLocalDate();
-        final LocalDate createdOn = ZonedDateTime.ofInstant(getCreatedOn().toInstant(), DateUtils.getDateTimeZoneOfTenant()).toLocalDate();
-        final LocalDate modifiedOn = ZonedDateTime.ofInstant(getModifiedOn().toInstant(), DateUtils.getDateTimeZoneOfTenant())
-                .toLocalDate();
-
-        String createdBy = getCreatedBy() != null ? getCreatedBy().getUsername() : null;
-        String modifiedBy = getModifiedBy() != null ? getModifiedBy().getUsername() : null;
-        return new FloatingRatePeriodData(getId(), fromDate, interest, isDifferentialToBaseLendingRate(), isActive(), createdBy, createdOn,
-                modifiedBy, modifiedOn);
+        final LocalDate fromDate = getFromDate();
+        return new FloatingRatePeriodData(getId(), fromDate, interest, isDifferentialToBaseLendingRate(), isActive());
     }
 
 }
