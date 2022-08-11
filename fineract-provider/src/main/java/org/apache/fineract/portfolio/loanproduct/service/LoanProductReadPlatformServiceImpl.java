@@ -36,6 +36,9 @@ import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.charge.data.ChargeData;
 import org.apache.fineract.portfolio.charge.service.ChargeReadPlatformService;
 import org.apache.fineract.portfolio.common.service.CommonEnumerations;
+import org.apache.fineract.portfolio.creditscorecard.data.CreditScorecardFeatureData;
+import org.apache.fineract.portfolio.creditscorecard.provider.ScorecardServiceProvider;
+import org.apache.fineract.portfolio.creditscorecard.service.CreditScorecardReadPlatformService;
 import org.apache.fineract.portfolio.delinquency.data.DelinquencyBucketData;
 import org.apache.fineract.portfolio.delinquency.service.DelinquencyReadPlatformService;
 import org.apache.fineract.portfolio.loanproduct.data.LoanProductBorrowerCycleVariationData;
@@ -62,20 +65,27 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
     private final RateReadService rateReadService;
     private final DatabaseSpecificSQLGenerator sqlGenerator;
     private final FineractEntityAccessUtil fineractEntityAccessUtil;
+
+    private final ScorecardServiceProvider scorecardServiceProvider;
+
     private final DelinquencyReadPlatformService delinquencyReadPlatformService;
+
 
     @Autowired
     public LoanProductReadPlatformServiceImpl(final PlatformSecurityContext context,
             final ChargeReadPlatformService chargeReadPlatformService, final JdbcTemplate jdbcTemplate,
             final FineractEntityAccessUtil fineractEntityAccessUtil, final RateReadService rateReadService,
-            final DelinquencyReadPlatformService delinquencyReadPlatformService, final DatabaseSpecificSQLGenerator sqlGenerator) {
+            final DelinquencyReadPlatformService delinquencyReadPlatformService,
+            DatabaseSpecificSQLGenerator sqlGenerator, final ScorecardServiceProvider scorecardServiceProvider) {
         this.context = context;
         this.chargeReadPlatformService = chargeReadPlatformService;
         this.jdbcTemplate = jdbcTemplate;
         this.fineractEntityAccessUtil = fineractEntityAccessUtil;
         this.rateReadService = rateReadService;
         this.sqlGenerator = sqlGenerator;
+        this.scorecardServiceProvider = scorecardServiceProvider;
         this.delinquencyReadPlatformService = delinquencyReadPlatformService;
+
     }
 
     @Override
@@ -86,9 +96,23 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
             final Collection<RateData> rates = this.rateReadService.retrieveProductLoanRates(loanProductId);
             final Collection<LoanProductBorrowerCycleVariationData> borrowerCycleVariationDatas = retrieveLoanProductBorrowerCycleVariations(
                     loanProductId);
+
+
+            final String serviceName = "CreditScorecardReadPlatformService";
+            final CreditScorecardReadPlatformService scorecardService = (CreditScorecardReadPlatformService) scorecardServiceProvider
+                    .getScorecardService(serviceName);
+
+            Collection<CreditScorecardFeatureData> scorecardFeatures = null;
+
+            if (scorecardService != null) {
+                scorecardFeatures = scorecardService.retrieveLoanProductFeatures(loanProductId);
+            }
+
+            final LoanProductMapper rm = new LoanProductMapper(charges, borrowerCycleVariationDatas, rates, delinquencyBucketOptions, scorecardFeatures);
+
             final Collection<DelinquencyBucketData> delinquencyBucketOptions = this.delinquencyReadPlatformService
                     .retrieveAllDelinquencyBuckets();
-            final LoanProductMapper rm = new LoanProductMapper(charges, borrowerCycleVariationDatas, rates, delinquencyBucketOptions);
+
             final String sql = "select " + rm.loanProductSchema() + " where lp.id = ?";
 
             return this.jdbcTemplate.queryForObject(sql, rm, new Object[] { loanProductId }); // NOSONAR
@@ -189,15 +213,19 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
 
         private final Collection<RateData> rates;
 
+
+        private final Collection<CreditScorecardFeatureData> scorecardFeatures;
         private final Collection<DelinquencyBucketData> delinquencyBucketOptions;
 
         LoanProductMapper(final Collection<ChargeData> charges,
                 final Collection<LoanProductBorrowerCycleVariationData> borrowerCycleVariationDatas, final Collection<RateData> rates,
-                final Collection<DelinquencyBucketData> delinquencyBucketOptions) {
+                final Collection<DelinquencyBucketData> delinquencyBucketOptions, final Collection<CreditScorecardFeatureData> scorecardFeatures) {
             this.charges = charges;
             this.borrowerCycleVariationDatas = borrowerCycleVariationDatas;
             this.rates = rates;
+            this.scorecardFeatures = scorecardFeatures;
             this.delinquencyBucketOptions = delinquencyBucketOptions;
+
         }
 
         public String loanProductSchema() {
@@ -499,7 +527,8 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
                     floatingRateName, interestRateDifferential, minDifferentialLendingRate, defaultDifferentialLendingRate,
                     maxDifferentialLendingRate, isFloatingInterestRateCalculationAllowed, isVariableIntallmentsAllowed, minimumGap,
                     maximumGap, syncExpectedWithDisbursementDate, canUseForTopup, isEqualAmortization, rateOptions, this.rates,
-                    isRatesEnabled, fixedPrincipalPercentagePerInstallment, delinquencyBucketOptions, delinquencyBucket);
+                    isRatesEnabled, fixedPrincipalPercentagePerInstallment, delinquencyBucketOptions, delinquencyBucket, this.scorecardFeatures);
+
         }
     }
 
